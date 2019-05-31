@@ -228,10 +228,6 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
                         mozilla::ErrorResult& aRv) {
     aRv.Throw(NS_ERROR_NOT_IMPLEMENTED);
   }
-  void LegacyCall(JSContext* aCx, JS::Handle<JS::Value> aThisVal,
-                  const mozilla::dom::Sequence<JS::Value>& aArguments,
-                  JS::MutableHandle<JS::Value> aRetval,
-                  mozilla::ErrorResult& aRv);
 
   uint32_t GetRunID(mozilla::dom::SystemCallerGuarantee,
                     mozilla::ErrorResult& aRv);
@@ -322,7 +318,7 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
 
   nsresult BindToTree(mozilla::dom::Document* aDocument, nsIContent* aParent,
                       nsIContent* aBindingParent);
-  void UnbindFromTree(bool aDeep = true, bool aNullParent = true);
+  void UnbindFromTree(bool aNullParent = true);
 
   /**
    * Return the content policy type used for loading the element.

@@ -152,10 +152,6 @@ var ensureKnownRegion = async function(ss) {
         });
       }
     }
-
-    // If gInitialized is true then the search service was forced to perform
-    // a sync initialization during our XHRs - capture this via telemetry.
-    Services.telemetry.getHistogramById("SEARCH_SERVICE_COUNTRY_FETCH_CAUSED_SYNC_INIT").add(gInitialized);
   } catch (ex) {
     Cu.reportError(ex);
   } finally {
@@ -565,7 +561,7 @@ SearchService.prototype = {
     if (gInitialized) {
       if (!Components.isSuccessCode(this._initRV)) {
         SearchUtils.log("_ensureInitialized: failure");
-        throw this._initRV;
+        throw Components.Exception("SearchService previously failed to initialize", this._initRV);
       }
       return;
     }
@@ -1708,9 +1704,8 @@ SearchService.prototype = {
         throw ex;
       }
     }
-
     if (!Components.isSuccessCode(this._initRV)) {
-      throw this._initRV;
+      throw Components.Exception("SearchService initialization failed", this._initRV);
     }
     return this._initRV;
   },
@@ -1951,9 +1946,14 @@ SearchService.prototype = {
       });
     }
 
+    let shortName = extension.id.split("@")[0];
+    if (locale != DEFAULT_TAG) {
+      shortName += "-" + locale;
+    }
+
     let params = {
       name: searchProvider.name.trim(),
-      shortName: extension.id.split("@")[0],
+      shortName,
       description: extension.manifest.description,
       searchForm: searchProvider.search_form,
       // AddonManager will sometimes encode the URL via `new URL()`. We want

@@ -486,7 +486,9 @@ class nsDocShell final : public nsDocLoader,
 
   // aPrincipal can be passed in if the caller wants. If null is
   // passed in, the about:blank principal will end up being used.
+  // aCSP, if any, will be used for the new about:blank load.
   nsresult CreateAboutBlankContentViewer(nsIPrincipal* aPrincipal,
+                                         nsIContentSecurityPolicy* aCSP,
                                          nsIURI* aBaseURI,
                                          bool aTryToSaveOldPresentation = true,
                                          bool aCheckPermitUnload = true);
@@ -764,24 +766,24 @@ class nsDocShell final : public nsDocLoader,
     BFCACHE_SUCCESS,
     UNLOAD = mozilla::dom::BFCacheStatus::UNLOAD_LISTENER,
     UNLOAD_REQUEST = mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
-                              mozilla::dom::BFCacheStatus::REQUEST,
+                     mozilla::dom::BFCacheStatus::REQUEST,
     REQUEST = mozilla::dom::BFCacheStatus::REQUEST,
     UNLOAD_REQUEST_PEER = mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
                           mozilla::dom::BFCacheStatus::REQUEST |
                           mozilla::dom::BFCacheStatus::ACTIVE_PEER_CONNECTION,
     UNLOAD_REQUEST_PEER_MSE =
-      mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
-      mozilla::dom::BFCacheStatus::REQUEST |
-      mozilla::dom::BFCacheStatus::ACTIVE_PEER_CONNECTION |
-      mozilla::dom::BFCacheStatus::CONTAINS_MSE_CONTENT,
+        mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
+        mozilla::dom::BFCacheStatus::REQUEST |
+        mozilla::dom::BFCacheStatus::ACTIVE_PEER_CONNECTION |
+        mozilla::dom::BFCacheStatus::CONTAINS_MSE_CONTENT,
     UNLOAD_REQUEST_MSE = mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
                          mozilla::dom::BFCacheStatus::REQUEST |
                          mozilla::dom::BFCacheStatus::CONTAINS_MSE_CONTENT,
     SUSPENDED_UNLOAD_REQUEST_PEER =
-      mozilla::dom::BFCacheStatus::SUSPENDED |
-      mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
-      mozilla::dom::BFCacheStatus::REQUEST |
-      mozilla::dom::BFCacheStatus::ACTIVE_PEER_CONNECTION,
+        mozilla::dom::BFCacheStatus::SUSPENDED |
+        mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
+        mozilla::dom::BFCacheStatus::REQUEST |
+        mozilla::dom::BFCacheStatus::ACTIVE_PEER_CONNECTION,
   };
 
   void ReportBFCacheComboTelemetry(uint16_t aCombo);
@@ -1248,6 +1250,10 @@ class nsDocShell final : public nsDocLoader,
 
   // Set when activity in this docshell is being watched by the developer tools.
   bool mWatchedByDevtools : 1;
+
+  // This flag indicates whether or not the DocShell is currently executing an
+  // nsIWebNavigation navigation method.
+  bool mIsNavigating : 1;
 };
 
 #endif /* nsDocShell_h__ */

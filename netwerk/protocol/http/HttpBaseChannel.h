@@ -38,7 +38,7 @@
 #include "nsILoadInfo.h"
 #include "mozilla/net/NeckoCommon.h"
 #include "nsThreadUtils.h"
-#include "PrivateBrowsingChannel.h"
+#include "mozilla/net/PrivateBrowsingChannel.h"
 #include "mozilla/net/DNS.h"
 #include "nsITimedChannel.h"
 #include "nsIHttpChannel.h"
@@ -253,7 +253,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
   NS_IMETHOD SetDocumentURI(nsIURI* aDocumentURI) override;
   NS_IMETHOD GetRequestVersion(uint32_t* major, uint32_t* minor) override;
   NS_IMETHOD GetResponseVersion(uint32_t* major, uint32_t* minor) override;
-  NS_IMETHOD SetCookie(const char* aCookieHeader) override;
+  NS_IMETHOD SetCookie(const nsACString& aCookieHeader) override;
   NS_IMETHOD GetThirdPartyFlags(uint32_t* aForce) override;
   NS_IMETHOD SetThirdPartyFlags(uint32_t aForce) override;
   NS_IMETHOD GetForceAllowThirdPartyCookie(bool* aForce) override;
@@ -477,7 +477,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
   // Set-Cookie header in the response header of any network request.
   // This notification will come only after the "http-on-examine-response"
   // was fired.
-  void NotifySetCookie(char const* aCookie);
+  void NotifySetCookie(const nsACString& aCookie);
 
   mozilla::dom::PerformanceStorage* GetPerformanceStorage();
   void MaybeReportTimingData();
@@ -856,6 +856,10 @@ MOZ_MUST_USE nsresult HttpAsyncAborter<T>::AsyncAbort(nsresult status) {
 template <class T>
 inline void HttpAsyncAborter<T>::HandleAsyncAbort() {
   MOZ_ASSERT(!mCallOnResume, "How did that happen?");
+  nsresult status = mThis->mStatus;
+  MOZ_LOG(gHttpLog, LogLevel::Debug,
+          ("HttpAsyncAborter::HandleAsyncAbort [this=%p status=%" PRIx32 "]\n",
+           mThis, static_cast<uint32_t>(status)));
 
   if (mThis->mSuspendCount) {
     MOZ_LOG(

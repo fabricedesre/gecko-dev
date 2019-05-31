@@ -95,12 +95,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(CharacterData)
   nsIContent::Unlink(tmp);
 
-  // Clear flag here because unlinking slots will clear the
-  // containing shadow root pointer.
-  tmp->UnsetFlags(NODE_IS_IN_SHADOW_TREE);
-
-  nsContentSlots* slots = tmp->GetExistingContentSlots();
-  if (slots) {
+  if (nsContentSlots* slots = tmp->GetExistingContentSlots()) {
     slots->Unlink();
   }
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
@@ -251,7 +246,8 @@ nsresult CharacterData::SetTextInternal(
   Directionality oldDir = eDir_NotSet;
   bool dirAffectsAncestor =
       (NodeType() == TEXT_NODE &&
-       TextNodeWillChangeDirection(this, &oldDir, aOffset));
+       TextNodeWillChangeDirection(static_cast<nsTextNode*>(this), &oldDir,
+                                   aOffset));
 
   if (aOffset == 0 && endOffset == textLength) {
     // Replacing whole text or old text was empty.  Don't bother to check for
@@ -496,14 +492,14 @@ nsresult CharacterData::BindToTree(Document* aDocument, nsIContent* aParent,
   return NS_OK;
 }
 
-void CharacterData::UnbindFromTree(bool aDeep, bool aNullParent) {
+void CharacterData::UnbindFromTree(bool aNullParent) {
   // Unset frame flags; if we need them again later, they'll get set again.
   UnsetFlags(NS_CREATE_FRAME_IF_NON_WHITESPACE | NS_REFRAME_IF_WHITESPACE);
 
   Document* document = GetComposedDoc();
 
   if (aNullParent) {
-    if (this->IsRootOfNativeAnonymousSubtree()) {
+    if (IsRootOfNativeAnonymousSubtree()) {
       nsNodeUtils::NativeAnonymousChildListChange(this, true);
     }
     if (GetParent()) {

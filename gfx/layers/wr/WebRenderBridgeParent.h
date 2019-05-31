@@ -14,9 +14,11 @@
 #include "GLContextProvider.h"
 #include "Layers.h"
 #include "mozilla/layers/CompositableTransactionParent.h"
+#include "mozilla/layers/CompositorTypes.h"
 #include "mozilla/layers/CompositorVsyncSchedulerOwner.h"
 #include "mozilla/layers/PWebRenderBridgeParent.h"
 #include "mozilla/layers/UiCompositorControllerParent.h"
+#include "mozilla/layers/WebRenderCompositionRecorder.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/WeakPtr.h"
@@ -124,7 +126,8 @@ class WebRenderBridgeParent final
       const wr::IdNamespace& aIdNamespace, const bool& aContainsSVGGroup,
       const VsyncId& aVsyncId, const TimeStamp& aVsyncStartTime,
       const TimeStamp& aRefreshStartTime, const TimeStamp& aTxnStartTime,
-      const nsCString& aTxnURL, const TimeStamp& aFwdTime) override;
+      const nsCString& aTxnURL, const TimeStamp& aFwdTime,
+      nsTArray<CompositionPayload>&& aPayloads) override;
   mozilla::ipc::IPCResult RecvEmptyTransaction(
       const FocusTarget& aFocusTarget, const uint32_t& aPaintSequenceNumber,
       nsTArray<RenderRootUpdates>&& aRenderRootUpdates,
@@ -133,7 +136,8 @@ class WebRenderBridgeParent final
       const wr::IdNamespace& aIdNamespace, const VsyncId& aVsyncId,
       const TimeStamp& aVsyncStartTime, const TimeStamp& aRefreshStartTime,
       const TimeStamp& aTxnStartTime, const nsCString& aTxnURL,
-      const TimeStamp& aFwdTime) override;
+      const TimeStamp& aFwdTime,
+      nsTArray<CompositionPayload>&& aPayloads) override;
   mozilla::ipc::IPCResult RecvSetFocusTarget(
       const FocusTarget& aFocusTarget) override;
   mozilla::ipc::IPCResult RecvParentCommands(
@@ -197,6 +201,7 @@ class WebRenderBridgeParent final
       const TimeStamp& aVsyncStartTime, const TimeStamp& aRefreshStartTime,
       const TimeStamp& aTxnStartTime, const nsCString& aTxnURL,
       const TimeStamp& aFwdTime, const bool aIsFirstPaint,
+      nsTArray<CompositionPayload>&& aPayloads,
       const bool aUseForTelemetry = true);
   TransactionId LastPendingTransactionId();
   TransactionId FlushTransactionIdsForEpoch(
@@ -268,6 +273,9 @@ class WebRenderBridgeParent final
   bool IsRootWebRenderBridgeParent() const;
   LayersId GetLayersId() const;
   WRRootId GetWRRootId() const;
+
+  void SetCompositionRecorder(
+      RefPtr<layers::WebRenderCompositionRecorder>&& aRecorder);
 
  private:
   class ScheduleSharedSurfaceRelease;
@@ -399,7 +407,8 @@ class WebRenderBridgeParent final
                          const TimeStamp& aRefreshStartTime,
                          const TimeStamp& aTxnStartTime,
                          const nsCString& aTxnURL, const TimeStamp& aFwdTime,
-                         const bool aIsFirstPaint, const bool aUseForTelemetry)
+                         const bool aIsFirstPaint, const bool aUseForTelemetry,
+                         nsTArray<CompositionPayload>&& aPayloads)
         : mEpoch(aEpoch),
           mId(aId),
           mVsyncId(aVsyncId),
@@ -411,7 +420,8 @@ class WebRenderBridgeParent final
           mSkippedComposites(0),
           mContainsSVGGroup(aContainsSVGGroup),
           mIsFirstPaint(aIsFirstPaint),
-          mUseForTelemetry(aUseForTelemetry) {}
+          mUseForTelemetry(aUseForTelemetry),
+          mPayloads(std::move(aPayloads)) {}
     wr::Epoch mEpoch;
     TransactionId mId;
     VsyncId mVsyncId;
@@ -425,6 +435,7 @@ class WebRenderBridgeParent final
     bool mContainsSVGGroup;
     bool mIsFirstPaint;
     bool mUseForTelemetry;
+    nsTArray<CompositionPayload> mPayloads;
   };
 
   struct CompositorAnimationIdsForEpoch {

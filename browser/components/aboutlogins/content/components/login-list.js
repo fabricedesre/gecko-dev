@@ -8,6 +8,7 @@ class LoginList extends ReflectedFluentElement {
   constructor() {
     super();
     this._logins = [];
+    this._filter = "";
     this._selectedItem = null;
   }
 
@@ -29,35 +30,44 @@ class LoginList extends ReflectedFluentElement {
 
   render() {
     let list = this.shadowRoot.querySelector("ol");
+    list.textContent = "";
     for (let login of this._logins) {
       list.append(new LoginListItem(login));
     }
-    document.l10n.setAttributes(this, "login-list", {count: this._logins.length});
+
+    let visibleLoginCount = this._applyFilter();
+    document.l10n.setAttributes(this, "login-list", {count: visibleLoginCount});
+  }
+
+  _applyFilter() {
+    let matchingLoginGuids;
+    if (this._filter) {
+      matchingLoginGuids = this._logins.filter(login => {
+        return login.hostname.toLocaleLowerCase().includes(this._filter) ||
+               login.username.toLocaleLowerCase().includes(this._filter);
+      }).map(login => login.guid);
+    } else {
+      matchingLoginGuids = this._logins.map(login => login.guid);
+    }
+
+    for (let listItem of this.shadowRoot.querySelectorAll("login-list-item")) {
+      if (matchingLoginGuids.includes(listItem.getAttribute("guid"))) {
+        if (listItem.hidden) {
+          listItem.hidden = false;
+        }
+      } else if (!listItem.hidden) {
+        listItem.hidden = true;
+      }
+    }
+
+    return matchingLoginGuids.length;
   }
 
   handleEvent(event) {
     switch (event.type) {
       case "AboutLoginsFilterLogins": {
-        let query = event.detail.toLocaleLowerCase();
-        let matchingLoginGuids;
-        if (query) {
-          matchingLoginGuids = this._logins.filter(login => {
-            return login.hostname.toLocaleLowerCase().includes(query) ||
-                   login.username.toLocaleLowerCase().includes(query);
-          }).map(login => login.guid);
-        } else {
-          matchingLoginGuids = this._logins.map(login => login.guid);
-        }
-        for (let listItem of this.shadowRoot.querySelectorAll("login-list-item")) {
-          if (matchingLoginGuids.includes(listItem.getAttribute("guid"))) {
-            if (listItem.hidden) {
-              listItem.hidden = false;
-            }
-          } else if (!listItem.hidden) {
-            listItem.hidden = true;
-          }
-        }
-        document.l10n.setAttributes(this, "login-list", {count: matchingLoginGuids.length});
+        this._filter = event.detail.toLocaleLowerCase();
+        this.render();
         break;
       }
       case "AboutLoginsLoginSelected": {
@@ -65,10 +75,10 @@ class LoginList extends ReflectedFluentElement {
           if (this._selectedItem.getAttribute("guid") == event.detail.guid) {
             return;
           }
-          this._selectedItem.classList.toggle("selected", false);
+          this._selectedItem.classList.remove("selected");
         }
         this._selectedItem = this.shadowRoot.querySelector(`login-list-item[guid="${event.detail.guid}"]`);
-        this._selectedItem.classList.toggle("selected", true);
+        this._selectedItem.classList.add("selected");
         break;
       }
     }
@@ -82,17 +92,22 @@ class LoginList extends ReflectedFluentElement {
     return this.reflectedFluentIDs;
   }
 
+  clearSelection() {
+    if (!this._selectedItem) {
+      return;
+    }
+    this._selectedItem.classList.remove("selected");
+    this._selectedItem = null;
+  }
+
   setLogins(logins) {
-    let list = this.shadowRoot.querySelector("ol");
-    list.textContent = "";
     this._logins = logins;
     this.render();
   }
 
   loginAdded(login) {
     this._logins.push(login);
-    let list = this.shadowRoot.querySelector("ol");
-    list.append(new LoginListItem(login));
+    this.render();
   }
 
   loginModified(login) {
@@ -102,24 +117,12 @@ class LoginList extends ReflectedFluentElement {
         break;
       }
     }
-    let list = this.shadowRoot.querySelector("ol");
-    for (let loginListItem of list.children) {
-      if (loginListItem.getAttribute("guid") == login.guid) {
-        loginListItem.update(login);
-        break;
-      }
-    }
+    this.render();
   }
 
   loginRemoved(login) {
     this._logins = this._logins.filter(l => l.guid != login.guid);
-    let list = this.shadowRoot.querySelector("ol");
-    for (let loginListItem of list.children) {
-      if (loginListItem.getAttribute("guid") == login.guid) {
-        loginListItem.remove();
-        break;
-      }
-    }
+    this.render();
   }
 }
 customElements.define("login-list", LoginList);

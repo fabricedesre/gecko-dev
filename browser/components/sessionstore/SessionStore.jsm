@@ -155,6 +155,9 @@ const RESTORE_TAB_CONTENT_REASON = {
   NAVIGATE_AND_RESTORE: 1,
 };
 
+// 'browser.startup.page' preference value to resume the previous session.
+const BROWSER_STARTUP_RESUME_SESSION = 3;
+
 ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm", this);
 ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 ChromeUtils.import("resource://gre/modules/TelemetryTimestamps.jsm", this);
@@ -231,6 +234,10 @@ var SessionStore = {
 
   get lastClosedObjectType() {
     return SessionStoreInternal.lastClosedObjectType;
+  },
+
+  get willAutoRestore() {
+    return SessionStoreInternal.willAutoRestore;
   },
 
   init: function ss_init() {
@@ -369,8 +376,8 @@ var SessionStore = {
     return SessionStoreInternal.navigateAndRestore(tab, loadArguments, historyIndex);
   },
 
-  updateSessionStoreFromTablistener(aTab, aData) {
-    return SessionStoreInternal.updateSessionStoreFromTablistener(aTab, aData);
+  updateSessionStoreFromTablistener(aBrowser, aData) {
+    return SessionStoreInternal.updateSessionStoreFromTablistener(aBrowser, aData);
   },
 
   getSessionHistory(tab, updatedCallback) {
@@ -620,6 +627,16 @@ var SessionStoreInternal = {
   },
 
   /**
+   * Returns a boolean that determines whether the session will be automatically
+   * restored upon the _next_ startup or a restart.
+   */
+  get willAutoRestore() {
+    return !PrivateBrowsingUtils.permanentPrivateBrowsing &&
+      (Services.prefs.getBoolPref("browser.sessionstore.resume_session_once") ||
+       Services.prefs.getIntPref("browser.startup.page") == BROWSER_STARTUP_RESUME_SESSION);
+  },
+
+  /**
    * Initialize the sessionstore service.
    */
   init() {
@@ -647,7 +664,7 @@ var SessionStoreInternal = {
     let state;
     let ss = SessionStartup;
 
-    if (ss.doRestore() ||
+    if (ss.willRestore() ||
         ss.sessionType == ss.DEFER_SESSION) {
       state = ss.state;
     }
@@ -678,7 +695,7 @@ var SessionStoreInternal = {
           // restore it
           LastSession.setState(state.lastSessionState);
 
-          if (ss.previousSessionCrashed) {
+          if (ss.willRestoreAsCrashed()) {
             this._recentCrashes = (state.session &&
                                    state.session.recentCrashes || 0) + 1;
 
@@ -822,17 +839,20 @@ var SessionStoreInternal = {
     }
   },
 
-  updateSessionStoreFromTablistener(aTab, aData) {
-    let browser = aTab.linkedBrowser;
-    let win = browser.ownerGlobal;
-    TabState.update(browser, aData);
+  updateSessionStoreFromTablistener(aBrowser, aData) {
+    if (aBrowser.permanentKey == undefined) {
+      return;
+    }
+
+    TabState.update(aBrowser, aData);
+    let win = aBrowser.ownerGlobal;
     this.saveStateDelayed(win);
 
     if (aData.flushID) {
       // This is an update kicked off by an async flush request. Notify the
       // TabStateFlusher so that it can finish the request and notify its
       // consumer that's waiting for the flush to be done.
-      TabStateFlusher.resolve(browser, aData.flushID);
+      TabStateFlusher.resolve(aBrowser, aData.flushID);
     }
   },
 
@@ -1242,7 +1262,7 @@ var SessionStoreInternal = {
 
       if (closedWindowState) {
         let newWindowState;
-        if (AppConstants.platform == "macosx" || !this._doResumeSession()) {
+        if (AppConstants.platform == "macosx" || !SessionStartup.willRestore()) {
           // We want to split the window up into pinned tabs and unpinned tabs.
           // Pinned tabs should be restored. If there are any remaining tabs,
           // they should be added back to _closedWindows.
@@ -2328,7 +2348,7 @@ var SessionStoreInternal = {
     // Tell our caller to redirect the load into this newly created process.
     let remoteTab = aBrowser.frameLoader.remoteTab;
     debug(`[process-switch]: new tabID: ${remoteTab.tabId}`);
-    return remoteTab;
+    return remoteTab.contentProcessId;
   },
 
   /**
@@ -4696,15 +4716,6 @@ var SessionStoreInternal = {
     WINDOW_SHOWING_PROMISES.set(window, PromiseUtils.defer());
 
     return window;
-  },
-
-  /**
-   * Whether or not to resume session, if not recovering from a crash.
-   * @returns bool
-   */
-  _doResumeSession: function ssi_doResumeSession() {
-    return this._prefBranch.getIntPref("startup.page") == 3 ||
-           this._prefBranch.getBoolPref("sessionstore.resume_session_once");
   },
 
   /**

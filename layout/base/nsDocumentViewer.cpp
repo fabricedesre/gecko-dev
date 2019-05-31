@@ -1252,7 +1252,7 @@ nsresult nsDocumentViewer::PermitUnloadInternal(uint32_t* aPermitUnloadFlags,
   {
     // Never permit popups from the beforeunload handler, no matter
     // how we get here.
-    nsAutoPopupStatePusher popupStatePusher(PopupBlocker::openAbused, true);
+    AutoPopupStatePusher popupStatePusher(PopupBlocker::openAbused, true);
 
     // Never permit dialogs from the beforeunload handler
     nsGlobalWindowOuter* globalWindow = nsGlobalWindowOuter::Cast(window);
@@ -1460,7 +1460,7 @@ nsDocumentViewer::PageHide(bool aIsUnload) {
 
     // Never permit popups from the unload handler, no matter how we get
     // here.
-    nsAutoPopupStatePusher popupStatePusher(PopupBlocker::openAbused, true);
+    AutoPopupStatePusher popupStatePusher(PopupBlocker::openAbused, true);
 
     Document::PageUnloadingEventTimeStamp timestamp(mDocument);
 
@@ -3533,12 +3533,7 @@ nsDocumentViewer::Print(nsIPrintSettings* aPrintSettings,
     // callbacks have been called:
     mAutoBeforeAndAfterPrint = std::move(autoBeforeAndAfterPrint);
   }
-  dom::Element* root = mDocument->GetRootElement();
-  if (root &&
-      root->HasAttr(kNameSpaceID_None, nsGkAtoms::mozdisallowselectionprint)) {
-    printJob->SetDisallowSelectionPrint(true);
-  }
-  rv = printJob->Print(aPrintSettings, aWebProgressListener);
+  rv = printJob->Print(mDocument, aPrintSettings, aWebProgressListener);
   if (NS_FAILED(rv)) {
     OnDonePrinting();
   }
@@ -3617,12 +3612,6 @@ nsDocumentViewer::PrintPreview(nsIPrintSettings* aPrintSettings,
     // Postpone the 'afterprint' event until after the mozPrintCallback
     // callbacks have been called:
     mAutoBeforeAndAfterPrint = std::move(autoBeforeAndAfterPrint);
-  }
-  dom::Element* root = doc->GetRootElement();
-  if (root &&
-      root->HasAttr(kNameSpaceID_None, nsGkAtoms::mozdisallowselectionprint)) {
-    PR_PL(("PrintPreview: found mozdisallowselectionprint"));
-    printJob->SetDisallowSelectionPrint(true);
   }
   rv = printJob->PrintPreview(doc, aPrintSettings, aWebProgressListener);
   mPrintPreviewZoomed = false;

@@ -74,10 +74,6 @@ class nsHTMLDocument : public mozilla::dom::Document, public nsIHTMLDocument {
 
  public:
   // nsIHTMLDocument
-  virtual void SetCompatibilityMode(nsCompatibility aMode) override;
-
-  virtual bool IsWriting() override { return mWriteLevel != uint32_t(0); }
-
   virtual Element* GetUnfocusedKeyEventTarget() override;
 
   nsContentList* GetExistingForms() const { return mForms; }
@@ -95,9 +91,6 @@ class nsHTMLDocument : public mozilla::dom::Document, public nsIHTMLDocument {
   virtual void TearingDownEditor() override;
   virtual void SetIsXHTML(bool aXHTML) override {
     mType = (aXHTML ? eXHTML : eHTML);
-  }
-  virtual void SetDocWriteDisabled(bool aDisabled) override {
-    mDisableDocWrite = aDisabled;
   }
 
   nsresult ChangeContentEditableCount(nsIContent* aElement,
@@ -141,8 +134,6 @@ class nsHTMLDocument : public mozilla::dom::Document, public nsIHTMLDocument {
   // WebIDL API
   virtual JSObject* WrapNode(JSContext* aCx,
                              JS::Handle<JSObject*> aGivenProto) override;
-  void GetDomain(nsAString& aDomain);
-  void SetDomain(const nsAString& aDomain, mozilla::ErrorResult& rv);
   bool IsRegistrableDomainSuffixOfOrEqualTo(const nsAString& aHostSuffixString,
                                             const nsACString& aOrigHost);
   void NamedGetter(JSContext* cx, const nsAString& aName, bool& aFound,
@@ -154,16 +145,6 @@ class nsHTMLDocument : public mozilla::dom::Document, public nsIHTMLDocument {
     }
   }
   void GetSupportedNames(nsTArray<nsString>& aNames);
-  Document* Open(const mozilla::dom::Optional<nsAString>& /* unused */,
-                 const nsAString& /* unused */, mozilla::ErrorResult& aError);
-  mozilla::dom::Nullable<mozilla::dom::WindowProxyHolder> Open(
-      const nsAString& aURL, const nsAString& aName, const nsAString& aFeatures,
-      bool aReplace, mozilla::ErrorResult& rv);
-  void Close(mozilla::ErrorResult& rv);
-  void Write(const mozilla::dom::Sequence<nsString>& aText,
-             mozilla::ErrorResult& rv);
-  void Writeln(const mozilla::dom::Sequence<nsString>& aText,
-               mozilla::ErrorResult& rv);
   void GetDesignMode(nsAString& aDesignMode);
   void SetDesignMode(const nsAString& aDesignMode,
                      nsIPrincipal& aSubjectPrincipal, mozilla::ErrorResult& rv);
@@ -224,24 +205,10 @@ class nsHTMLDocument : public mozilla::dom::Document, public nsIHTMLDocument {
 
   static void DocumentWriteTerminationFunc(nsISupports* aRef);
 
-  already_AddRefed<nsIURI> GetDomainURI();
-  already_AddRefed<nsIURI> CreateInheritingURIForHost(
-      const nsACString& aHostString);
-  already_AddRefed<nsIURI> RegistrableDomainSuffixOfInternal(
-      const nsAString& aHostSuffixString, nsIURI* aOrigHost);
-
-  void WriteCommon(const nsAString& aText, bool aNewlineTerminate,
-                   mozilla::ErrorResult& aRv);
-  // A version of WriteCommon used by WebIDL bindings
-  void WriteCommon(const mozilla::dom::Sequence<nsString>& aText,
-                   bool aNewlineTerminate, mozilla::ErrorResult& rv);
-
   /**
    * Like IsEditingOn(), but will flush as needed first.
    */
   bool IsEditingOnAfterFlush();
-
-  void* GenerateParserKey(void);
 
   // A helper class to keep nsContentList objects alive for a short period of
   // time. Note, when the final Release is called on an nsContentList object, it
@@ -298,18 +265,8 @@ class nsHTMLDocument : public mozilla::dom::Document, public nsIHTMLDocument {
    */
   void MaybeDispatchCheckKeyPressEventModelEvent();
 
-  // Tracks if we are currently processing any document.write calls (either
-  // implicit or explicit). Note that if a write call writes out something which
-  // would block the parser, then mWriteLevel will be incorrect until the parser
-  // finishes processing that script.
-  uint32_t mWriteLevel;
-
   // Load flags of the document's channel
   uint32_t mLoadFlags;
-
-  bool mTooDeepWriteRecursion;
-
-  bool mDisableDocWrite;
 
   bool mWarnedWidthHeight;
 

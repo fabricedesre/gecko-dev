@@ -29,8 +29,8 @@ function log(msg, data) {
 function logThreadEvents(dbg, event) {
   const thread = dbg.toolbox.threadClient;
 
-  thread.addListener(event, function onEvent(eventName, ...args) {
-    info(`Thread event '${eventName}' fired.`);
+  thread.on(event, function onEvent(...args) {
+    info(`Thread event '${event}' fired.`);
   });
 }
 
@@ -108,9 +108,8 @@ function waitForThreadEvents(dbg, eventName) {
   const thread = dbg.toolbox.threadClient;
 
   return new Promise(function(resolve, reject) {
-    thread.addListener(eventName, function onEvent(eventName, ...args) {
+    thread.once(function onEvent(...args) {
       info(`Thread event '${eventName}' fired.`);
-      thread.removeListener(eventName, onEvent);
       resolve.apply(resolve, args);
     });
   });
@@ -1152,6 +1151,11 @@ function isVisible(outerEl, innerEl) {
 
   const visible = verticallyVisible && horizontallyVisible;
   return visible;
+}
+
+async function getEditorLineGutter(dbg, line) {
+  const lineEl = await getEditorLineEl(dbg, line);
+  return lineEl.firstChild;
 }
 
 async function getEditorLineEl(dbg, line) {

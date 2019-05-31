@@ -396,7 +396,8 @@ class BrowserChild final : public BrowserChildBase,
       const WidgetTouchEvent& aEvent, const ScrollableLayerGuid& aGuid,
       const uint64_t& aInputBlockId, const nsEventStatus& aApzResponse);
 
-  mozilla::ipc::IPCResult RecvFlushTabState(const uint32_t& aFlushId);
+  mozilla::ipc::IPCResult RecvFlushTabState(const uint32_t& aFlushId,
+                                            const bool& aIsFinal);
 
   mozilla::ipc::IPCResult RecvNativeSynthesisResponse(
       const uint64_t& aObserverId, const nsCString& aResponse);
@@ -690,7 +691,7 @@ class BrowserChild final : public BrowserChildBase,
     return *sVisibleTabs;
   }
 
-  bool UpdateSessionStore(uint32_t aFlushId);
+  bool UpdateSessionStore(uint32_t aFlushId, bool aIsFinal = false);
 
  protected:
   virtual ~BrowserChild();
@@ -914,6 +915,8 @@ class BrowserChild final : public BrowserChildBase,
   PDocAccessibleChild* mTopLevelDocAccessibleChild;
 #endif
   bool mCoalesceMouseMoveEvents;
+
+  bool mShouldSendWebProgressEventsToParent;
 
   // In some circumstances, a DocShell might be in a state where it is
   // "blocked", and we should not attempt to change its active state or

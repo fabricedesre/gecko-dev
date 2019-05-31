@@ -54,9 +54,11 @@ class LoginItem extends ReflectedFluentElement {
       "copy-username-button",
       "delete-button",
       "edit-button",
+      "field-required-symbol",
       "hostname-label",
       "modal-input-reveal-checkbox-hide",
       "modal-input-reveal-checkbox-show",
+      "new-login-title",
       "open-site-button",
       "password-label",
       "save-changes-button",
@@ -87,6 +89,13 @@ class LoginItem extends ReflectedFluentElement {
         copyUsernameButton.setAttribute(newAttrName, this.getAttribute(attrName));
         break;
       }
+      case "field-required-symbol": {
+        for (let labelSelector of [".hostname-label", ".password-label"]) {
+          let label = this.shadowRoot.querySelector(labelSelector);
+          label.setAttribute("field-required-symbol", this.getAttribute(attrName));
+        }
+        break;
+      }
       case "modal-input-reveal-checkbox-hide": {
         this.shadowRoot.querySelector("modal-input[name='password']")
                        .setAttribute("reveal-checkbox-hide", this.getAttribute(attrName));
@@ -95,6 +104,14 @@ class LoginItem extends ReflectedFluentElement {
       case "modal-input-reveal-checkbox-show": {
         this.shadowRoot.querySelector("modal-input[name='password']")
                        .setAttribute("reveal-checkbox-show", this.getAttribute(attrName));
+        break;
+      }
+      case "new-login-title": {
+        let title = this.shadowRoot.querySelector(".title");
+        title.setAttribute(attrName, this.getAttribute(attrName));
+        if (!this._login.title) {
+          title.textContent = this.getAttribute(attrName);
+        }
         break;
       }
       default:
@@ -110,9 +127,12 @@ class LoginItem extends ReflectedFluentElement {
       timeUsed: this._login.timeLastUsed || "",
     };
     document.l10n.setAttributes(this, "login-item", l10nArgs);
-    let hostnameNoScheme = this._login.hostname && new URL(this._login.hostname).hostname;
-    this.shadowRoot.querySelector(".title").textContent = hostnameNoScheme || "";
-    this.shadowRoot.querySelector(".hostname").textContent = this._login.hostname || "";
+
+    let title = this.shadowRoot.querySelector(".title");
+    title.textContent = this._login.title || title.getAttribute("new-login-title");
+    this.shadowRoot.querySelector(".hostname-saved-value").textContent = this._login.hostname || "";
+    this.shadowRoot.querySelector("input[name='hostname']").value = this._login.hostname || "";
+
     this.shadowRoot.querySelector("modal-input[name='username']").setAttribute("value", this._login.username || "");
     this.shadowRoot.querySelector("modal-input[name='password']").setAttribute("value", this._login.password || "");
   }
@@ -154,21 +174,22 @@ class LoginItem extends ReflectedFluentElement {
           return;
         }
         if (event.target.classList.contains("save-changes-button")) {
-          let loginUpdates = {
-            guid: this._login.guid,
-          };
-          let formUsername = this.shadowRoot.querySelector("modal-input[name='username']").value.trim();
-          if (formUsername != this._login.username) {
-            loginUpdates.username = formUsername;
+          if (!this._isFormValid({reportErrors: true})) {
+            return;
           }
-          let formPassword = this.shadowRoot.querySelector("modal-input[name='password']").value.trim();
-          if (formPassword != this._login.password) {
-            loginUpdates.password = formPassword;
+          let loginUpdates = this._loginFromForm();
+          if (this._login.guid) {
+            loginUpdates.guid = this._login.guid;
+            document.dispatchEvent(new CustomEvent("AboutLoginsUpdateLogin", {
+              bubbles: true,
+              detail: loginUpdates,
+            }));
+          } else {
+            document.dispatchEvent(new CustomEvent("AboutLoginsCreateLogin", {
+              bubbles: true,
+              detail: loginUpdates,
+            }));
           }
-          document.dispatchEvent(new CustomEvent("AboutLoginsUpdateLogin", {
-            bubbles: true,
-            detail: loginUpdates,
-          }));
         }
         break;
       }
@@ -177,16 +198,28 @@ class LoginItem extends ReflectedFluentElement {
 
   setLogin(login) {
     this._login = login;
+    this.toggleAttribute("isNewLogin", !login.guid);
+    this.toggleEditing(!login.guid);
+    this.render();
+  }
+
+  loginAdded(login) {
+    if (this._login.guid ||
+        !window.AboutLoginsUtils.doLoginsMatch(login, this._loginFromForm())) {
+      return;
+    }
+
+    this.toggleEditing(false);
+    this._login = login;
     this.render();
   }
 
   loginModified(login) {
-    if (login.guid != this._login.guid) {
+    if (this._login.guid != login.guid) {
       return;
     }
 
     this._login = login;
-    this.toggleEditing(false);
     this.render();
   }
 
@@ -200,10 +233,49 @@ class LoginItem extends ReflectedFluentElement {
 
   toggleEditing(force) {
     let shouldEdit = force !== undefined ? force : !this.hasAttribute("editing");
+
+    if (!shouldEdit) {
+      this.removeAttribute("isNewLogin");
+    }
+
     this.shadowRoot.querySelector(".edit-button").disabled = shouldEdit;
     this.shadowRoot.querySelectorAll("modal-input")
                    .forEach(el => el.toggleAttribute("editing", shouldEdit));
     this.toggleAttribute("editing", shouldEdit);
+  }
+
+  /**
+   * Checks that the edit/new-login form has valid values present for their
+   * respective required fields.
+   *
+   * @param {boolean} reportErrors If true, validation errors will be reported
+   *                               to the user.
+   */
+  _isFormValid({reportErrors} = {}) {
+    let fields = [this.shadowRoot.querySelector("modal-input[name='password']")];
+    if (this.hasAttribute("isNewLogin")) {
+      fields.push(this.shadowRoot.querySelector("input[name='hostname']"));
+    }
+    let valid = true;
+    // Check validity on all required fields so each field will get :invalid styling
+    // if applicable.
+    for (let field of fields) {
+      if (reportErrors) {
+        valid &= field.reportValidity();
+      } else {
+        valid &= field.checkValidity();
+      }
+    }
+    return valid;
+  }
+
+  _loginFromForm() {
+    return {
+      username: this.shadowRoot.querySelector("modal-input[name='username']").value.trim(),
+      password: this.shadowRoot.querySelector("modal-input[name='password']").value.trim(),
+      hostname: this.hasAttribute("isNewLogin") ? this.shadowRoot.querySelector("input[name='hostname']").value.trim()
+                                                : this.shadowRoot.querySelector(".hostname-saved-value").textContent,
+    };
   }
 }
 customElements.define("login-item", LoginItem);

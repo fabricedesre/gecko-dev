@@ -62,6 +62,7 @@
 #include "mozilla/StyleSheet.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/dom/FailedCertSecurityInfoBinding.h"
 #include <bitset>  // for member
 
 // windows.h #defines CreateEvent
@@ -98,6 +99,7 @@ class nsAtom;
 class nsIBFCacheEntry;
 class nsIChannel;
 class nsIContent;
+class nsIContentSecurityPolicy;
 class nsIContentSink;
 class nsIDocShell;
 class nsIDocShellTreeItem;
@@ -697,6 +699,24 @@ class Document : public nsINode,
   void SetChromeXHRDocBaseURI(nsIURI* aURI) { mChromeXHRDocBaseURI = aURI; }
 
   /**
+   * The CSP in general is stored in the ClientInfo, but we also cache
+   * the CSP on the document so subresources loaded within a document
+   * can query that cached CSP instead of having to deserialize the CSP
+   * from the Client.
+   *
+   * Please note that at the time of CSP parsing the Client is not
+   * available yet, hence we sync CSP of document and Client when the
+   * Client becomes available within nsGlobalWindowInner::EnsureClientSource().
+   */
+  nsIContentSecurityPolicy* GetCsp() const;
+  void SetCsp(nsIContentSecurityPolicy* aCSP);
+
+  nsIContentSecurityPolicy* GetPreloadCsp() const;
+  void SetPreloadCsp(nsIContentSecurityPolicy* aPreloadCSP);
+
+  void GetCspJSON(nsString& aJSON);
+
+  /**
    * Set referrer policy and upgrade-insecure-requests flags
    */
   void ApplySettingsFromCSP(bool aSpeculative);
@@ -1260,6 +1280,22 @@ class Document : public nsINode,
    * from user JavaScript code.
    */
   void DisableCookieAccess() { mDisableCookieAccess = true; }
+
+  /**
+   * Set compatibility mode for this document
+   */
+  void SetCompatibilityMode(nsCompatibility aMode);
+
+  /**
+   * Called to disable client access to document.write() API from user
+   * JavaScript code.
+   */
+  void SetDocWriteDisabled(bool aDisabled) { mDisableDocWrite = aDisabled; }
+
+  /**
+   * Whether a document.write() call is in progress.
+   */
+  bool IsWriting() const { return mWriteLevel != uint32_t(0); }
 
   /**
    * Access HTTP header data (this may also get set from other
@@ -2206,6 +2242,20 @@ class Document : public nsINode,
    * exists. This is only relevant to error pages.
    */
   nsIChannel* GetFailedChannel() const { return mFailedChannel; }
+
+  /**
+   * This function checks if the document that is trying to access
+   * GetFailedCertSecurityInfo is a trusted cert error page or not.
+   */
+  static bool CallerIsTrustedAboutCertError(JSContext* aCx, JSObject* aObject);
+
+  /**
+   * Get the security info (i.e. certificate validity, errorCode, etc) for a
+   * failed Channel. This property is only exposed for about:certerror
+   * documents.
+   */
+  void GetFailedCertSecurityInfo(mozilla::dom::FailedCertSecurityInfo& aInfo,
+                                 ErrorResult& aRv);
 
   /**
    * Set the channel that failed to load and resulted in an error page.
@@ -3202,6 +3252,7 @@ class Document : public nsINode,
   };
 
   Document* GetTopLevelContentDocument();
+  const Document* GetTopLevelContentDocument() const;
 
   // Returns the associated XUL window if this is a top-level chrome document,
   // null otherwise.
@@ -3247,6 +3298,8 @@ class Document : public nsINode,
                                            ErrorResult& rv);
   void GetInputEncoding(nsAString& aInputEncoding) const;
   already_AddRefed<Location> GetLocation() const;
+  void GetDomain(nsAString& aDomain);
+  void SetDomain(const nsAString& aDomain, mozilla::ErrorResult& rv);
   void GetCookie(nsAString& aCookie, mozilla::ErrorResult& rv);
   void SetCookie(const nsAString& aCookie, mozilla::ErrorResult& rv);
   void GetReferrer(nsAString& aReferrer) const;
@@ -3267,6 +3320,16 @@ class Document : public nsINode,
     return GetFuncStringContentList<nsCachableElementsByNameNodeList>(
         this, MatchNameAttribute, nullptr, UseExistingNameString, aName);
   }
+  Document* Open(const mozilla::dom::Optional<nsAString>& /* unused */,
+                 const nsAString& /* unused */, mozilla::ErrorResult& aError);
+  mozilla::dom::Nullable<mozilla::dom::WindowProxyHolder> Open(
+      const nsAString& aURL, const nsAString& aName, const nsAString& aFeatures,
+      bool aReplace, mozilla::ErrorResult& rv);
+  void Close(mozilla::ErrorResult& rv);
+  void Write(const mozilla::dom::Sequence<nsString>& aText,
+             mozilla::ErrorResult& rv);
+  void Writeln(const mozilla::dom::Sequence<nsString>& aText,
+               mozilla::ErrorResult& rv);
   Nullable<WindowProxyHolder> GetDefaultView() const;
   Element* GetActiveElement();
   bool HasFocus(ErrorResult& rv) const;
@@ -3668,7 +3731,15 @@ class Document : public nsINode,
 
   void ParseWidthAndHeightInMetaViewport(const nsAString& aWidthString,
                                          const nsAString& aHeightString,
-                                         const nsAString& aScaleString);
+                                         bool aIsAutoScale);
+
+  // Parse scale values in viewport meta tag for a given |aHeaderField| which
+  // represents the scale property and returns the scale value if it's valid.
+  Maybe<LayoutDeviceToScreenScale> ParseScaleInHeader(nsAtom* aHeaderField);
+
+  // Parse scale values in viewport meta tag and set the values in
+  // mScaleMinFloat, mScaleMaxFloat and mScaleFloat respectively.
+  void ParseScalesInMetaViewport();
 
   FlashClassification DocumentFlashClassificationInternal();
 
@@ -3879,6 +3950,20 @@ class Document : public nsINode,
   // aSheetSet as the preferred set in the CSSLoader.
   void EnableStyleSheetsForSetInternal(const nsAString& aSheetSet,
                                        bool aUpdateCSSLoader);
+
+  already_AddRefed<nsIURI> GetDomainURI();
+  already_AddRefed<nsIURI> CreateInheritingURIForHost(
+      const nsACString& aHostString);
+  already_AddRefed<nsIURI> RegistrableDomainSuffixOfInternal(
+      const nsAString& aHostSuffixString, nsIURI* aOrigHost);
+
+  void WriteCommon(const nsAString& aText, bool aNewlineTerminate,
+                   mozilla::ErrorResult& aRv);
+  // A version of WriteCommon used by WebIDL bindings
+  void WriteCommon(const mozilla::dom::Sequence<nsString>& aText,
+                   bool aNewlineTerminate, mozilla::ErrorResult& rv);
+
+  void* GenerateParserKey(void);
 
  private:
   void RecordContentBlockingLog(
@@ -4302,8 +4387,8 @@ class Document : public nsINode,
   // have to recalculate it each time.
   bool mAllowZoom : 1;
   bool mValidScaleFloat : 1;
+  bool mValidMinScale : 1;
   bool mValidMaxScale : 1;
-  bool mScaleStrEmpty : 1;
   bool mWidthStrEmpty : 1;
 
   // Parser aborted. True if the parser of this document was forcibly
@@ -4352,6 +4437,13 @@ class Document : public nsINode,
   // When false, the .cookies property is completely disabled
   bool mDisableCookieAccess : 1;
 
+  // When false, the document.write() API is disabled.
+  bool mDisableDocWrite : 1;
+
+  // Has document.write() been called with a recursion depth higher than
+  // allowed?
+  bool mTooDeepWriteRecursion : 1;
+
   uint8_t mPendingFullscreenRequests;
 
   uint8_t mXMLDeclarationBits;
@@ -4361,6 +4453,12 @@ class Document : public nsINode,
 
   // Onload blockers which haven't been activated yet.
   uint32_t mAsyncOnloadBlockCount;
+
+  // Tracks if we are currently processing any document.write calls (either
+  // implicit or explicit). Note that if a write call writes out something which
+  // would block the parser, then mWriteLevel will be incorrect until the parser
+  // finishes processing that script.
+  uint32_t mWriteLevel;
 
   // Compatibility mode
   nsCompatibility mCompatMode;
@@ -4414,6 +4512,12 @@ class Document : public nsINode,
 
   // The channel that got passed to Document::StartDocumentLoad(), if any.
   nsCOMPtr<nsIChannel> mChannel;
+
+  // The CSP for every load lives in the Client within the LoadInfo. For all
+  // document-initiated subresource loads we can use that cached version of the
+  // CSP so we do not have to deserialize the CSP from the Client all the time.
+  nsCOMPtr<nsIContentSecurityPolicy> mCSP;
+  nsCOMPtr<nsIContentSecurityPolicy> mPreloadCSP;
 
  private:
   nsCString mContentType;

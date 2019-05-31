@@ -8,8 +8,14 @@
 #define mozilla_dom_BrowserBridgeParent_h
 
 #include "mozilla/dom/PBrowserBridgeParent.h"
+#include "mozilla/Tuple.h"
 
 namespace mozilla {
+
+namespace a11y {
+class DocAccessibleParent;
+}
+
 namespace dom {
 
 class BrowserParent;
@@ -35,6 +41,18 @@ class BrowserBridgeParent : public PBrowserBridgeParent {
 
   // Get our manager actor.
   BrowserParent* Manager();
+
+#if defined(ACCESSIBILITY)
+  /**
+   * Get the accessible for this iframe's embedder OuterDocAccessible.
+   * This returns the actor for the containing document and the unique id of
+   * the embedder accessible within that document.
+   */
+  Tuple<a11y::DocAccessibleParent*, uint64_t> GetEmbedderAccessible() {
+    return Tuple<a11y::DocAccessibleParent*, uint64_t>(mEmbedderAccessibleDoc,
+                                                       mEmbedderAccessibleID);
+  }
+#endif  // defined(ACCESSIBILITY)
 
   // Tear down this BrowserBridgeParent.
   void Destroy();
@@ -68,12 +86,19 @@ class BrowserBridgeParent : public PBrowserBridgeParent {
   mozilla::ipc::IPCResult RecvSetIsUnderHiddenEmbedderElement(
       const bool& aIsUnderHiddenEmbedderElement);
 
+  mozilla::ipc::IPCResult RecvSetEmbedderAccessible(PDocAccessibleParent* aDoc,
+                                                    uint64_t aID);
+
   void ActorDestroy(ActorDestroyReason aWhy) override;
 
  private:
   ~BrowserBridgeParent();
 
   RefPtr<BrowserParent> mBrowserParent;
+#if defined(ACCESSIBILITY)
+  RefPtr<a11y::DocAccessibleParent> mEmbedderAccessibleDoc;
+  uint64_t mEmbedderAccessibleID;
+#endif  // defined(ACCESSIBILITY)
   bool mIPCOpen;
 };
 

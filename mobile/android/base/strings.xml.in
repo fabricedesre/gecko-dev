@@ -43,8 +43,10 @@
   <string name="firstrun_sync_message">&firstrun_sync_message2;</string>
   <string name="firstrun_sync_subtext">&firstrun_sync_subtext2;</string>
   <string name="newfirstrun_sync_subtext">&newfirstrun_sync_subtext;</string>
+  <string name="updatednewfirstrun_sync_subtext">&updatednewfirstrun_sync_subtext;</string>
   <string name="firstrun_signin_button">&firstrun_signin_button;</string>
   <string name="newfirstrun_signin_button">&newfirstrun_signin_button;</string>
+  <string name="updatednewfirstrun_signin_button">&updatednewfirstrun_signin_button;</string>
   <string name="firstrun_welcome_button_browser">&onboard_start_button_browser;</string>
   <string name="firstrun_button_next">&firstrun_button_next;</string>
 
@@ -481,6 +483,8 @@
   <string name="filepicker_audio_title">&filepicker_audio_title;</string>
   <string name="filepicker_image_title">&filepicker_image_title;</string>
   <string name="filepicker_video_title">&filepicker_video_title;</string>
+  <!-- Toast for default file picker when authority is denied. -->
+  <string name="filepicker_permission_denied">&filepicker_permission_denied;</string>
 
   <!-- Default bookmarks. We used to use bookmark titles shared with XUL from mobile's
        profile/bookmarks.inc (see bug 964946). Don't expose the URLs to L10N. -->

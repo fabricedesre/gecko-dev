@@ -188,12 +188,6 @@ const startupPhases = {
       condition: WIN,
       stat: 1,
     },
-    { // bug 1544037
-      path: "ProfLDS:startupCache/startupCache." +
-             (Services.appinfo.is64Bit ? 8 : 4) + ".little",
-      condition: WIN,
-      stat: 1,
-    },
     { // bug 1541601
       path: "PrfDef:channel-prefs.js",
       stat: 1,
@@ -294,16 +288,6 @@ const startupPhases = {
       condition: LINUX,
       read: 3,
       close: 3,
-    },
-    {
-      path: "UChrm:userChrome.css",
-      condition: WIN,
-      stat: 1,
-    },
-    { // bug 1541233
-      path: "UChrm:userContent.css",
-      condition: WIN,
-      stat: 1,
     },
     { // bug 1541246
       path: "XREUSysExt:",
@@ -546,6 +530,7 @@ const startupPhases = {
     { // bug 1003968
       path: "XREAppDist:searchplugins",
       condition: WIN,
+      ignoreIfUnused: true, // with WebRender enabled this may happen during "before becoming idle"
       stat: 1,
     },
     {
@@ -658,6 +643,12 @@ const startupPhases = {
       path: "XCurProcD:omni.ja",
       condition: WIN,
       stat: 7,
+    },
+    { // bug 1003968
+      path: "XREAppDist:searchplugins",
+      condition: WIN,
+      ignoreIfUnused: true, // with WebRender enabled this may happen during "before handling user events"
+      stat: 1,
     },
   ],
 };
@@ -920,7 +911,7 @@ add_task(async function() {
   if (shouldPass) {
     ok(shouldPass, "No unexpected main thread I/O during startup");
   } else {
-    const filename = "startup-mainthreadio-profile.json";
+    const filename = "profile_startup_mainthreadio.json";
     let path = Cc["@mozilla.org/process/environment;1"]
                  .getService(Ci.nsIEnvironment)
                  .get("MOZ_UPLOAD_DIR");
@@ -929,7 +920,7 @@ add_task(async function() {
     await OS.File.writeAtomic(profilePath,
                               encoder.encode(JSON.stringify(startupRecorder.data.profile)));
     ok(false,
-       "Unexpected main thread I/O behavior during startup; profile uploaded in " +
-       filename);
+       "Unexpected main thread I/O behavior during startup; open the " +
+       `${filename} artifact in the Firefox Profiler to see what happened`);
   }
 });

@@ -43,6 +43,7 @@ class ClientSource;
 interface nsIURI;
 interface nsIChannel;
 interface nsIContentViewer;
+interface nsIContentSecurityPolicy;
 interface nsIDocShellLoadInfo;
 interface nsIEditor;
 interface nsIEditingSession;
@@ -606,8 +607,10 @@ interface nsIDocShell : nsIDocShellTreeItem
   /**
    * Create a new about:blank document and content viewer.
    * @param aPrincipal the principal to use for the new document.
+   * @param aCsp the CSP to use for the new document.
    */
-  void createAboutBlankContentViewer(in nsIPrincipal aPrincipal);
+  void createAboutBlankContentViewer(in nsIPrincipal aPrincipal,
+                                     [optional] in nsIContentSecurityPolicy aCSP);
 
   /**
    * Upon getting, returns the canonical encoding label of the document
@@ -1189,4 +1192,17 @@ interface nsIDocShell : nsIDocShellTreeItem
    * Whether developer tools are watching activity in this docshell.
    */
   [infallible] attribute boolean watchedByDevtools;
+
+  /*
+   * Whether or not this docshell is executing a nsIWebNavigation navigation
+   * method.
+   *
+   * This will be true when the following methods are executing:
+   *   nsIWebNavigation.binaryLoadURI
+   *   nsIWebNavigation.goBack
+   *   nsIWebNavigation.goForward
+   *   nsIWebNavigation.gotoIndex
+   *   nsIWebNavigation.loadURI
+   */
+  [infallible] readonly attribute boolean isNavigating;
 };

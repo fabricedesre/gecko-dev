@@ -106,14 +106,6 @@ class BasePrincipal : public nsJSPrincipals {
   NS_IMETHOD CheckMayLoad(nsIURI* uri, bool report,
                           bool allowIfInheritsPrincipal) final;
   NS_IMETHOD GetAddonPolicy(nsISupports** aResult) final;
-  NS_IMETHOD GetCsp(nsIContentSecurityPolicy** aCsp) override;
-  NS_IMETHOD SetCsp(nsIContentSecurityPolicy* aCsp) override;
-  NS_IMETHOD EnsureCSP(dom::Document* aDocument,
-                       nsIContentSecurityPolicy** aCSP) override;
-  NS_IMETHOD GetPreloadCsp(nsIContentSecurityPolicy** aPreloadCSP) override;
-  NS_IMETHOD EnsurePreloadCSP(dom::Document* aDocument,
-                              nsIContentSecurityPolicy** aCSP) override;
-  NS_IMETHOD GetCspJSON(nsAString& outCSPinJSON) override;
   NS_IMETHOD GetIsNullPrincipal(bool* aResult) override;
   NS_IMETHOD GetIsCodebasePrincipal(bool* aResult) override;
   NS_IMETHOD GetIsExpandedPrincipal(bool* aResult) override;
@@ -163,8 +155,6 @@ class BasePrincipal : public nsJSPrincipals {
   }
 
   PrincipalKind Kind() const { return mKind; }
-
-  already_AddRefed<BasePrincipal> CloneForcingFirstPartyDomain(nsIURI* aURI);
 
   already_AddRefed<BasePrincipal> CloneForcingOriginAttributes(
       const OriginAttributes& aOriginAttributes);
@@ -248,9 +238,6 @@ class BasePrincipal : public nsJSPrincipals {
                   const OriginAttributes& aOriginAttributes);
   void FinishInit(BasePrincipal* aOther,
                   const OriginAttributes& aOriginAttributes);
-
-  nsCOMPtr<nsIContentSecurityPolicy> mCSP;
-  nsCOMPtr<nsIContentSecurityPolicy> mPreloadCSP;
 
  private:
   static already_AddRefed<BasePrincipal> CreateCodebasePrincipal(

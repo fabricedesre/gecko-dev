@@ -4,6 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#ifdef ACCESSIBILITY
+#  include "mozilla/a11y/DocAccessibleParent.h"
+#endif
 #include "mozilla/dom/BrowserBridgeParent.h"
 #include "mozilla/dom/BrowserParent.h"
 #include "mozilla/dom/ContentParent.h"
@@ -19,7 +22,13 @@ using namespace mozilla::hal;
 namespace mozilla {
 namespace dom {
 
-BrowserBridgeParent::BrowserBridgeParent() : mIPCOpen(false) {}
+BrowserBridgeParent::BrowserBridgeParent()
+    :
+#ifdef ACCESSIBILITY
+      mEmbedderAccessibleID(0),
+#endif
+      mIPCOpen(false) {
+}
 
 BrowserBridgeParent::~BrowserBridgeParent() { Destroy(); }
 
@@ -61,9 +70,9 @@ nsresult BrowserBridgeParent::Init(const nsString& aPresentationURL,
                            constructorSender->ChildID());
 
   // Construct the BrowserParent object for our subframe.
-  RefPtr<BrowserParent> browserParent(
-      new BrowserParent(constructorSender, tabId, tabContext, aBrowsingContext,
-                        aChromeFlags, this));
+  RefPtr<BrowserParent> browserParent(new BrowserParent(
+      constructorSender, tabId, tabContext, aBrowsingContext, aChromeFlags));
+  browserParent->SetBrowserBridgeParent(this);
 
   // Open a remote endpoint for our PBrowser actor. DeallocPBrowserParent
   // releases the ref taken.
@@ -201,6 +210,15 @@ IPCResult BrowserBridgeParent::RecvSetIsUnderHiddenEmbedderElement(
     const bool& aIsUnderHiddenEmbedderElement) {
   Unused << mBrowserParent->SendSetIsUnderHiddenEmbedderElement(
       aIsUnderHiddenEmbedderElement);
+  return IPC_OK();
+}
+
+IPCResult BrowserBridgeParent::RecvSetEmbedderAccessible(
+    PDocAccessibleParent* aDoc, uint64_t aID) {
+#ifdef ACCESSIBILITY
+  mEmbedderAccessibleDoc = static_cast<a11y::DocAccessibleParent*>(aDoc);
+  mEmbedderAccessibleID = aID;
+#endif
   return IPC_OK();
 }
 

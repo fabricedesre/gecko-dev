@@ -72,6 +72,7 @@
   --grey-90-a20: rgba(12, 12, 13, 0.2);
   --grey-90-a30: rgba(12, 12, 13, 0.3);
   --grey-90-a50: rgba(12, 12, 13, 0.5);
+  --grey-90-a60: rgba(12, 12, 13, 0.6);
   --green-50: #30e60b;
   --green-60: #12bc00;
   --green-70: #058b00;
@@ -433,6 +434,8 @@ xul|menulist > xul|menupopup xul|menuseparator {
 html|input[type="email"],
 html|input[type="tel"],
 html|input[type="text"],
+html|input[type="password"],
+html|input[type="url"],
 html|input[type="number"],
 html|textarea,
 xul|textbox {
@@ -454,16 +457,21 @@ xul|textbox {
 html|input[type="email"],
 html|input[type="tel"],
 html|input[type="text"],
+html|input[type="password"],
+html|input[type="url"],
 html|input[type="number"],
 html|textarea {
   font-family: inherit;
   font-size: inherit;
   padding: 5px 8px;
+  margin: 2px 4px;
 }
 
 html|input[type="email"]:enabled:not(:focus):hover,
 html|input[type="tel"]:enabled:not(:focus):hover,
 html|input[type="text"]:enabled:not(:focus):hover,
+html|input[type="password"]:enabled:not(:focus):hover,
+html|input[type="url"]:enabled:not(:focus):hover,
 html|input[type="number"]:enabled:not(:focus):hover,
 html|textarea:enabled:not(:focus):hover,
 xul|textbox:not([disabled="true"]):not([focused]):hover {
@@ -473,6 +481,8 @@ xul|textbox:not([disabled="true"]):not([focused]):hover {
 html|input[type="email"]:focus,
 html|input[type="tel"]:focus,
 html|input[type="text"]:focus,
+html|input[type="password"]:focus,
+html|input[type="url"]:focus,
 html|input[type="number"]:focus,
 html|textarea:focus,
 xul|textbox[focused] {
@@ -484,6 +494,8 @@ xul|textbox[focused] {
 html|input[type="email"]:-moz-ui-invalid,
 html|input[type="tel"]:-moz-ui-invalid,
 html|input[type="text"]:-moz-ui-invalid,
+html|input[type="password"]:-moz-ui-invalid,
+html|input[type="url"]:-moz-ui-invalid,
 html|input[type="number"]:-moz-ui-invalid,
 html|textarea:-moz-ui-invalid {
   border-color: var(--in-content-border-invalid);
@@ -495,6 +507,8 @@ html|textarea:-moz-ui-invalid {
 html|input[type="email"]:-moz-ui-invalid:focus,
 html|input[type="tel"]:-moz-ui-invalid:focus,
 html|input[type="text"]:-moz-ui-invalid:focus,
+html|input[type="password"]:-moz-ui-invalid:focus,
+html|input[type="url"]:-moz-ui-invalid:focus,
 html|input[type="number"]:-moz-ui-invalid:focus,
 html|textarea:-moz-ui-invalid:focus {
   box-shadow: 0 0 0 3px var(--in-content-border-invalid-shadow);
@@ -503,6 +517,8 @@ html|textarea:-moz-ui-invalid:focus {
 html|input[type="email"]:disabled,
 html|input[type="tel"]:disabled,
 html|input[type="text"]:disabled,
+html|input[type="password"]:disabled,
+html|input[type="url"]:disabled,
 html|input[type="number"]:disabled,
 html|textarea:disabled,
 xul|textbox[disabled="true"] {

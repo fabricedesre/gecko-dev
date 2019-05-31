@@ -96,9 +96,7 @@ nsresult HTMLMetaElement::BindToTree(Document* aDocument, nsIContent* aParent,
           nsContentUtils::TrimWhitespace<nsContentUtils::IsHTMLWhitespace>(
               content);
 
-      nsIPrincipal* principal = aDocument->NodePrincipal();
-      nsCOMPtr<nsIContentSecurityPolicy> csp;
-      principal->EnsureCSP(aDocument, getter_AddRefs(csp));
+      nsCOMPtr<nsIContentSecurityPolicy> csp = aDocument->GetCsp();
       if (csp) {
         if (LOG_ENABLED()) {
           nsAutoCString documentURIspec;
@@ -122,6 +120,10 @@ nsresult HTMLMetaElement::BindToTree(Document* aDocument, nsIContent* aParent,
                               false,  // csp via meta tag can not be report only
                               true);  // delivered through the meta tag
         NS_ENSURE_SUCCESS(rv, rv);
+        nsPIDOMWindowInner* inner = aDocument->GetInnerWindow();
+        if (inner) {
+          inner->SetCsp(csp);
+        }
         aDocument->ApplySettingsFromCSP(false);
       }
     }
@@ -134,10 +136,10 @@ nsresult HTMLMetaElement::BindToTree(Document* aDocument, nsIContent* aParent,
   return rv;
 }
 
-void HTMLMetaElement::UnbindFromTree(bool aDeep, bool aNullParent) {
+void HTMLMetaElement::UnbindFromTree(bool aNullParent) {
   nsCOMPtr<Document> oldDoc = GetUncomposedDoc();
   CreateAndDispatchEvent(oldDoc, NS_LITERAL_STRING("DOMMetaRemoved"));
-  nsGenericHTMLElement::UnbindFromTree(aDeep, aNullParent);
+  nsGenericHTMLElement::UnbindFromTree(aNullParent);
 }
 
 void HTMLMetaElement::CreateAndDispatchEvent(Document* aDoc,

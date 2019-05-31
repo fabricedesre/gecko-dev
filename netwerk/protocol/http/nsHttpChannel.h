@@ -286,9 +286,10 @@ class nsHttpChannel final : public HttpBaseChannel,
   }
   TransactionObserver* GetTransactionObserver() { return mTransactionObserver; }
 
-  typedef MozPromise<nsCOMPtr<nsIRemoteTab>, nsresult, false> TabPromise;
-  already_AddRefed<TabPromise> TakeRedirectTabPromise() {
-    return mRedirectTabPromise.forget();
+  typedef MozPromise<uint64_t, nsresult, false> ContentProcessIdPromise;
+  already_AddRefed<ContentProcessIdPromise>
+  TakeRedirectContentProcessIdPromise() {
+    return mRedirectContentProcessIdPromise.forget();
   }
   uint64_t CrossProcessRedirectIdentifier() {
     return mCrossProcessRedirectIdentifier;
@@ -408,6 +409,7 @@ class nsHttpChannel final : public HttpBaseChannel,
                                      int64_t* aContentLength);
   bool ShouldUpdateOfflineCacheEntry();
   MOZ_MUST_USE nsresult ReadFromCache(bool alreadyMarkedValid);
+  MOZ_MUST_USE nsresult ContinueReadFromCache(nsresult rv);
   void CloseCacheEntry(bool doomOnFailure);
   void CloseOfflineCacheEntry();
   MOZ_MUST_USE nsresult InitCacheEntry();
@@ -576,7 +578,7 @@ class nsHttpChannel final : public HttpBaseChannel,
 
   // The associated childChannel is getting relocated to another process.
   // This promise will be resolved when that process is set up.
-  RefPtr<TabPromise> mRedirectTabPromise;
+  RefPtr<ContentProcessIdPromise> mRedirectContentProcessIdPromise;
   // This identifier is passed to the childChannel in order to identify it.
   uint64_t mCrossProcessRedirectIdentifier = 0;
 

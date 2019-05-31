@@ -479,7 +479,7 @@ tls13_SetupClientHello(sslSocket *ss, sslClientHelloType chType)
     session_ticket = &sid->u.ssl3.locked.sessionTicket;
     PORT_Assert(session_ticket && session_ticket->ticket.data);
 
-    if (ssl_TicketTimeValid(session_ticket)) {
+    if (ssl_TicketTimeValid(ss, session_ticket)) {
         ss->statelessResume = PR_TRUE;
     }
 
@@ -2724,7 +2724,7 @@ tls13_SendServerHelloSequence(sslSocket *ss)
         }
     }
 
-    ss->ssl3.hs.serverHelloTime = ssl_TimeUsec();
+    ss->ssl3.hs.serverHelloTime = ssl_Time(ss);
     return SECSuccess;
 }
 
@@ -4561,6 +4561,11 @@ tls13_ServerHandleFinished(sslSocket *ss, PRUint8 *b, PRUint32 length)
         return SECFailure;
     }
 
+    rv = tls13_FinishHandshake(ss);
+    if (rv != SECSuccess) {
+        return SECFailure;
+    }
+
     ssl_GetXmitBufLock(ss);
     if (ss->opt.enableSessionTickets) {
         rv = tls13_SendNewSessionTicket(ss, NULL, 0);
@@ -4573,8 +4578,7 @@ tls13_ServerHandleFinished(sslSocket *ss, PRUint8 *b, PRUint32 length)
         }
     }
     ssl_ReleaseXmitBufLock(ss);
-
-    return tls13_FinishHandshake(ss);
+    return SECSuccess;
 
 loser:
     ssl_ReleaseXmitBufLock(ss);
@@ -4981,7 +4985,7 @@ tls13_HandleNewSessionTicket(sslSocket *ss, PRUint8 *b, PRUint32 length)
         return SECFailure;
     }
 
-    ticket.received_timestamp = ssl_TimeUsec();
+    ticket.received_timestamp = ssl_Time(ss);
     rv = ssl3_ConsumeHandshakeNumber(ss, &ticket.ticket_lifetime_hint, 4, &b,
                                      &length);
     if (rv != SECSuccess) {

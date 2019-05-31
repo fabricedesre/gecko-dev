@@ -118,6 +118,19 @@ struct RequestData
   nsCString matchedList;
 };
 
+struct WebProgressStateChangeData
+{
+  bool isNavigating;
+  bool mayEnableCharacterEncodingMenu;
+
+  // The following fields are only set when the aStateFlags param passed with
+  // this struct is |nsIWebProgress.STATE_STOP|.
+  nsString contentType;
+  nsString charset;
+  nsIURI documentURI;
+};
+
+
 /**
  * A PBrowser manages a maximal locally connected subtree of BrowsingContexts
  * in a content process.
@@ -544,6 +557,11 @@ parent:
     async RegisterProtocolHandler(nsString scheme, nsIURI handlerURI, nsString title,
                                   nsIURI documentURI);
 
+    async OnStateChange(WebProgressData? aWebProgressData,
+                        RequestData aRequestData, uint32_t aStateFlags,
+                        nsresult aStatus,
+                        WebProgressStateChangeData? aStateChangeData);
+
     async OnProgressChange(WebProgressData? aWebProgressData,
                            RequestData aRequestData, int32_t aCurSelfProgress,
                            int32_t aMaxSelfProgress, int32_t aCurTotalProgress,
@@ -560,11 +578,12 @@ parent:
                              bool? aPrivatedMode,
                              nsCString[] aPositions,
                              int32_t[] aPositionDescendants,
-                             uint32_t aFlushId);
+                             uint32_t aFlushId,
+                             bool aIsFinal);
 
 child:
     async NativeSynthesisResponse(uint64_t aObserverId, nsCString aResponse);
-    async FlushTabState(uint32_t aFlushId);
+    async FlushTabState(uint32_t aFlushId, bool aIsFinal);
 
 parent:
 
@@ -620,9 +639,9 @@ parent:
      * This function is used to notify the parent that it should display a
      * canvas permission prompt.
      *
-     * @param aFirstPartyURI first party of the tab that is requesting access.
+     * @param aOrigin origin string of the document that is requesting access.
      */
-    async ShowCanvasPermissionPrompt(nsCString aFirstPartyURI,
+    async ShowCanvasPermissionPrompt(nsCString aOrigin,
                                      bool aHideDoorHanger);
 
     sync SetSystemFont(nsCString aFontName);

@@ -197,6 +197,7 @@ static uint32_t sESMInstanceCount = 0;
 int32_t EventStateManager::sUserInputEventDepth = 0;
 int32_t EventStateManager::sUserKeyboardEventDepth = 0;
 bool EventStateManager::sNormalLMouseEventInProcess = false;
+int16_t EventStateManager::sCurrentMouseBtn = MouseButton::eNotPressed;
 EventStateManager* EventStateManager::sActiveESM = nullptr;
 Document* EventStateManager::sMouseOverDocument = nullptr;
 AutoWeakFrame EventStateManager::sLastDragOverFrame = nullptr;
@@ -1096,9 +1097,7 @@ static bool HandleAccessKeyInRemoteChild(BrowserParent* aBrowserParent,
   AccessKeyInfo* accessKeyInfo = static_cast<AccessKeyInfo*>(aArg);
 
   // Only forward accesskeys for the active tab.
-  bool active;
-  aBrowserParent->GetDocShellIsActive(&active);
-  if (active) {
+  if (aBrowserParent->GetDocShellIsActive()) {
     // Even if there is no target for the accesskey in this process,
     // the event may match with a content accesskey.  If so, the keyboard
     // event should be handled with reply event for preventing double action.
@@ -1559,8 +1558,7 @@ void EventStateManager::FireContextClick() {
         }
       }
 
-      Document* doc = mGestureDownContent->GetComposedDoc();
-      AutoHandlingUserInputStatePusher userInpStatePusher(true, &event, doc);
+      AutoHandlingUserInputStatePusher userInpStatePusher(true, &event);
 
       // dispatch to DOM
       EventDispatcher::Dispatch(mGestureDownContent, mPresContext, &event,
@@ -4044,6 +4042,39 @@ class MOZ_STACK_CLASS ESMEventCB : public EventDispatchingCallback {
 };
 
 /*static*/
+bool EventStateManager::IsUserInteractionEvent(const WidgetEvent* aEvent) {
+  if (!aEvent->IsTrusted()) {
+    return false;
+  }
+
+  switch (aEvent->mMessage) {
+    // eKeyboardEventClass
+    case eKeyPress:
+    case eKeyDown:
+    case eKeyUp:
+      // Not all keyboard events are treated as user input, so that popups
+      // can't be opened, fullscreen mode can't be started, etc at
+      // unexpected time.
+      return aEvent->AsKeyboardEvent()->CanTreatAsUserInput();
+    // eBasicEventClass
+    case eFormChange:
+    // eMouseEventClass
+    case eMouseClick:
+    case eMouseDown:
+    case eMouseUp:
+    // ePointerEventClass
+    case ePointerDown:
+    case ePointerUp:
+    // eTouchEventClass
+    case eTouchStart:
+    case eTouchEnd:
+      return true;
+    default:
+      return false;
+  }
+}
+
+/*static*/
 bool EventStateManager::IsHandlingUserInput() {
   return sUserInputEventDepth > 0;
 }
@@ -6258,30 +6289,13 @@ void EventStateManager::Prefs::Init() {
 /******************************************************************/
 
 AutoHandlingUserInputStatePusher::AutoHandlingUserInputStatePusher(
-    bool aIsHandlingUserInput, WidgetEvent* aEvent, Document* aDocument)
+    bool aIsHandlingUserInput, WidgetEvent* aEvent)
     : mMessage(aEvent ? aEvent->mMessage : eVoidEvent),
       mIsHandlingUserInput(aIsHandlingUserInput) {
   if (!aIsHandlingUserInput) {
     return;
   }
   EventStateManager::StartHandlingUserInput(mMessage);
-  if (mMessage == eMouseDown) {
-    PresShell::ReleaseCapturingContent();
-    PresShell::AllowMouseCapture(true);
-  }
-  if (!aDocument || !aEvent || !aEvent->IsTrusted()) {
-    return;
-  }
-  if (NeedsToResetFocusManagerMouseButtonHandlingState()) {
-    nsFocusManager* fm = nsFocusManager::GetFocusManager();
-    NS_ENSURE_TRUE_VOID(fm);
-    // If it's in modal state, mouse button event handling may be nested.
-    // E.g., a modal dialog is opened at mousedown or mouseup event handler
-    // and the dialog is clicked.  Therefore, we should store current
-    // mouse button event handling document if nsFocusManager already has it.
-    mMouseButtonEventHandlingDocument =
-        fm->SetMouseButtonHandlingDocument(aDocument);
-  }
 }
 
 AutoHandlingUserInputStatePusher::~AutoHandlingUserInputStatePusher() {
@@ -6289,15 +6303,6 @@ AutoHandlingUserInputStatePusher::~AutoHandlingUserInputStatePusher() {
     return;
   }
   EventStateManager::StopHandlingUserInput(mMessage);
-  if (mMessage == eMouseDown) {
-    PresShell::AllowMouseCapture(false);
-  }
-  if (NeedsToResetFocusManagerMouseButtonHandlingState()) {
-    nsFocusManager* fm = nsFocusManager::GetFocusManager();
-    NS_ENSURE_TRUE_VOID(fm);
-    nsCOMPtr<Document> handlingDocument =
-        fm->SetMouseButtonHandlingDocument(mMouseButtonEventHandlingDocument);
-  }
 }
 
 }  // namespace mozilla

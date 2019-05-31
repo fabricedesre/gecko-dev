@@ -6,23 +6,9 @@
 
 [OverrideBuiltins]
 interface HTMLDocument : Document {
-           [SetterThrows]
-           attribute DOMString domain;
   // DOM tree accessors
   [Throws]
   getter object (DOMString name);
-
-  // dynamic markup insertion
-  [CEReactions, Throws]
-  Document open(optional DOMString type, optional DOMString replace = ""); // type is ignored
-  [CEReactions, Throws]
-  WindowProxy? open(DOMString url, DOMString name, DOMString features, optional boolean replace = false);
-  [CEReactions, Throws]
-  void close();
-  [CEReactions, Throws]
-  void write(DOMString... text);
-  [CEReactions, Throws]
-  void writeln(DOMString... text);
 
   [CEReactions, SetterThrows, SetterNeedsSubjectPrincipal]
            attribute DOMString designMode;

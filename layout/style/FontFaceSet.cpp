@@ -1032,17 +1032,16 @@ FontFaceSet::FindOrCreateUserFontEntryFromFontFace(
   if (existingEntry) {
     // aFontFace already has a user font entry, so we update its attributes
     // rather than creating a new one.
-    existingEntry->UpdateAttributes(weight, stretch, italicStyle,
-                                    featureSettings, variationSettings,
-                                    languageOverride, unicodeRanges,
-                                    fontDisplay, rangeFlags);
+    existingEntry->UpdateAttributes(
+        weight, stretch, italicStyle, featureSettings, variationSettings,
+        languageOverride, unicodeRanges, fontDisplay, rangeFlags);
     // If the family name has changed, remove the entry from its current family
     // and clear the mFamilyName field so it can be reset when added to a new
     // family.
     if (!existingEntry->mFamilyName.IsEmpty() &&
         existingEntry->mFamilyName != aFamilyName) {
       gfxUserFontFamily* family =
-        set->GetUserFontSet()->LookupFamily(existingEntry->mFamilyName);
+          set->GetUserFontSet()->LookupFamily(existingEntry->mFamilyName);
       if (family) {
         family->RemoveFontEntry(existingEntry);
       }
@@ -1082,14 +1081,14 @@ FontFaceSet::FindOrCreateUserFontEntryFromFontFace(
         }
         case StyleFontFaceSourceListComponent::Tag::Url: {
           face->mSourceType = gfxFontFaceSrc::eSourceType_URL;
-          const URLValue* url = component.AsUrl();
+          const StyleCssUrl* url = component.AsUrl();
           nsIURI* uri = url->GetURI();
           face->mURI = uri ? new gfxFontSrcURI(uri) : nullptr;
-          URLExtraData* extraData = url->ExtraData();
-          face->mReferrer = extraData->GetReferrer();
-          face->mReferrerPolicy = extraData->GetReferrerPolicy();
+          const URLExtraData& extraData = url->ExtraData();
+          face->mReferrer = extraData.GetReferrer();
+          face->mReferrerPolicy = extraData.GetReferrerPolicy();
           face->mOriginPrincipal =
-              new gfxFontSrcPrincipal(extraData->Principal());
+              new gfxFontSrcPrincipal(extraData.Principal());
 
           // agent and user stylesheets are treated slightly differently,
           // the same-site origin check and access control headers are

@@ -122,12 +122,14 @@
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/ServiceWorkerUtils.h"
 #include "mozilla/net/AsyncUrlChannelClassifier.h"
+#include "mozilla/net/CookieSettings.h"
 #include "mozilla/net/NeckoChannelParams.h"
 #include "mozilla/net/UrlClassifierFeatureFactory.h"
 #include "nsIWebNavigation.h"
 #include "HttpTrafficAnalyzer.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/dom/WindowGlobalParent.h"
+#include "js/Conversions.h"
 
 #ifdef MOZ_TASK_TRACER
 #  include "GeckoTaskTracer.h"
@@ -1782,9 +1784,9 @@ nsresult nsHttpChannel::CallOnStartRequest() {
 
     if (mListener) {
       nsCOMPtr<nsIStreamListener> deleteProtector(mListener);
+      mOnStartRequestCalled = true;
       deleteProtector->OnStartRequest(this);
     }
-
     mOnStartRequestCalled = true;
   });
 
@@ -1862,8 +1864,8 @@ nsresult nsHttpChannel::CallOnStartRequest() {
     MOZ_ASSERT(!mOnStartRequestCalled,
                "We should not call OsStartRequest twice");
     nsCOMPtr<nsIStreamListener> deleteProtector(mListener);
-    rv = deleteProtector->OnStartRequest(this);
     mOnStartRequestCalled = true;
+    rv = deleteProtector->OnStartRequest(this);
     if (NS_FAILED(rv)) return rv;
   } else {
     NS_WARNING("OnStartRequest skipped because of null listener");
@@ -2516,7 +2518,7 @@ nsresult nsHttpChannel::ContinueProcessResponse1() {
       (httpStatus != 407)) {
     nsAutoCString cookie;
     if (NS_SUCCEEDED(mResponseHead->GetHeader(nsHttp::Set_Cookie, cookie))) {
-      SetCookie(cookie.get());
+      SetCookie(cookie);
     }
 
     // Given a successful connection, process any STS or PKP data that's
@@ -2569,7 +2571,7 @@ nsresult nsHttpChannel::ContinueProcessResponse1() {
     // notify "http-on-may-change-process" observers
     gHttpHandler->OnMayChangeProcess(this);
 
-    if (mRedirectTabPromise) {
+    if (mRedirectContentProcessIdPromise) {
       MOZ_ASSERT(!mOnStartRequestCalled);
 
       PushRedirectAsyncFunc(&nsHttpChannel::ContinueProcessResponse2);
@@ -4049,6 +4051,9 @@ nsresult nsHttpChannel::OpenCacheEntryInternal(
   if (mIsTRRServiceChannel) {
     extension.Append("TRR");
   }
+  if (mRequestHead.IsHead()) {
+    extension.Append("HEAD");
+  }
 
   if (IsIsolated()) {
     auto& topWindowOrigin = GetTopWindowOrigin();
@@ -4218,6 +4223,7 @@ nsHttpChannel::OnCacheEntryCheck(nsICacheEntry* entry,
     // The cached response does not contain an entity.  We can only reuse
     // the response if the current request is also HEAD.
     if (!mRequestHead.IsHead()) {
+      *aResult = ENTRY_NOT_WANTED;
       return NS_OK;
     }
   }
@@ -5234,6 +5240,44 @@ nsresult nsHttpChannel::ReadFromCache(bool alreadyMarkedValid) {
 
   nsresult rv;
 
+  // notify "http-on-may-change-process" observers
+  gHttpHandler->OnMayChangeProcess(this);
+
+  if (mRedirectContentProcessIdPromise) {
+    PushRedirectAsyncFunc(&nsHttpChannel::ContinueReadFromCache);
+    rv = StartCrossProcessRedirect();
+    if (NS_SUCCEEDED(rv)) {
+      return NS_OK;
+    }
+    PopRedirectAsyncFunc(&nsHttpChannel::ContinueReadFromCache);
+  }
+
+  return ContinueReadFromCache(NS_OK);
+}
+
+nsresult nsHttpChannel::ContinueReadFromCache(nsresult rv) {
+  LOG(("nsHttpChannel::ContinueReadFromCache [this=%p] spec: %s\n", this,
+       mSpec.get()));
+
+  // The channel may have been cancelled in the meantime, either by the
+  // consumer or the channel classifier. In that case, we need to AsyncAbort
+  // to ensure OnStart/StopRequest are called.
+  // This should only be an error code if the cross-process redirect failed,
+  // and OnRedirectVerifyCallback was called with an error code.
+  if (NS_FAILED(rv)) {
+    // rv can only be an error code if this was a failed cross-process redirect
+    // It shouldn't have happened during a revalidation.
+    MOZ_ASSERT(!mDidReval, "Should not be a 304 response");
+    // Also, this should not be possible.
+    MOZ_ASSERT(!mCachedContentIsPartial, "Unexpected partially cached page?");
+
+    MOZ_ASSERT(!mCachePump);
+
+    CloseCacheEntry(false);
+    DoAsyncAbort(NS_FAILED(mStatus) ? mStatus : rv);
+    return rv;
+  }
+
   // Keep the conditions below in sync with the conditions in
   // StartBufferingCachedEntity.
 
@@ -5914,10 +5958,16 @@ nsresult nsHttpChannel::ContinueProcessRedirectionAfterFallback(nsresult rv) {
   if (profiler_is_active()) {
     int32_t priority = PRIORITY_NORMAL;
     GetPriority(&priority);
+
+    TimingStruct timings;
+    if (mTransaction) {
+      timings = mTransaction->Timings();
+    }
+
     profiler_add_network_marker(
         mURI, priority, mChannelId, NetworkLoadType::LOAD_REDIRECT,
         mLastStatusReported, TimeStamp::Now(), mLogicalOffset,
-        mCacheDisposition, nullptr, mRedirectURI);
+        mCacheDisposition, &timings, mRedirectURI);
   }
 #endif
 
@@ -6361,6 +6411,11 @@ nsHttpChannel::AsyncOpen(nsIStreamListener* aListener) {
   NS_ENSURE_ARG_POINTER(listener);
   NS_ENSURE_TRUE(!mIsPending, NS_ERROR_IN_PROGRESS);
   NS_ENSURE_TRUE(!mWasOpened, NS_ERROR_ALREADY_OPENED);
+
+  if (mCanceled) {
+    ReleaseListeners();
+    return mStatus;
+  }
 
   if (MaybeWaitForUploadStreamLength(listener, nullptr)) {
     return NS_OK;
@@ -7244,10 +7299,11 @@ nsHttpChannel::GetRequestMethod(nsACString& aMethod) {
 class DomPromiseListener final : dom::PromiseNativeHandler {
   NS_DECL_ISUPPORTS
 
-  static RefPtr<nsHttpChannel::TabPromise> Create(dom::Promise* aDOMPromise) {
+  static RefPtr<nsHttpChannel::ContentProcessIdPromise> Create(
+      dom::Promise* aDOMPromise) {
     MOZ_ASSERT(aDOMPromise);
     RefPtr<DomPromiseListener> handler = new DomPromiseListener();
-    RefPtr<nsHttpChannel::TabPromise> promise =
+    RefPtr<nsHttpChannel::ContentProcessIdPromise> promise =
         handler->mPromiseHolder.Ensure(__func__);
     aDOMPromise->AppendNativeHandler(handler);
     return promise;
@@ -7255,15 +7311,12 @@ class DomPromiseListener final : dom::PromiseNativeHandler {
 
   virtual void ResolvedCallback(JSContext* aCx,
                                 JS::Handle<JS::Value> aValue) override {
-    nsCOMPtr<nsIRemoteTab> browserParent;
-    JS::Rooted<JSObject*> obj(aCx, &aValue.toObject());
-    nsresult rv =
-        UnwrapArg<nsIRemoteTab>(aCx, obj, getter_AddRefs(browserParent));
-    if (NS_FAILED(rv)) {
-      mPromiseHolder.Reject(rv, __func__);
+    uint64_t cpId;
+    if (!JS::ToUint64(aCx, aValue, &cpId)) {
+      mPromiseHolder.Reject(NS_ERROR_FAILURE, __func__);
       return;
     }
-    mPromiseHolder.Resolve(browserParent, __func__);
+    mPromiseHolder.Resolve(cpId, __func__);
   }
 
   virtual void RejectedCallback(JSContext* aCx,
@@ -7278,15 +7331,15 @@ class DomPromiseListener final : dom::PromiseNativeHandler {
  private:
   DomPromiseListener() = default;
   ~DomPromiseListener() = default;
-  MozPromiseHolder<nsHttpChannel::TabPromise> mPromiseHolder;
+  MozPromiseHolder<nsHttpChannel::ContentProcessIdPromise> mPromiseHolder;
 };
 
 NS_IMPL_ISUPPORTS0(DomPromiseListener)
 
-NS_IMETHODIMP nsHttpChannel::SwitchProcessTo(dom::Promise* aTabPromise,
-                                             uint64_t aIdentifier) {
+NS_IMETHODIMP nsHttpChannel::SwitchProcessTo(
+    dom::Promise* aContentProcessIdPromise, uint64_t aIdentifier) {
   MOZ_ASSERT(NS_IsMainThread());
-  NS_ENSURE_ARG(aTabPromise);
+  NS_ENSURE_ARG(aContentProcessIdPromise);
 
   LOG(("nsHttpChannel::SwitchProcessTo [this=%p]", this));
   LogCallingScriptLocation(this);
@@ -7294,7 +7347,8 @@ NS_IMETHODIMP nsHttpChannel::SwitchProcessTo(dom::Promise* aTabPromise,
   // We cannot do this after OnStartRequest of the listener has been called.
   NS_ENSURE_FALSE(mOnStartRequestCalled, NS_ERROR_NOT_AVAILABLE);
 
-  mRedirectTabPromise = DomPromiseListener::Create(aTabPromise);
+  mRedirectContentProcessIdPromise =
+      DomPromiseListener::Create(aContentProcessIdPromise);
   mCrossProcessRedirectIdentifier = aIdentifier;
   return NS_OK;
 }
@@ -7645,7 +7699,7 @@ nsHttpChannel::OnStartRequest(nsIRequest* request) {
     // notify "http-on-may-change-process" observers
     gHttpHandler->OnMayChangeProcess(this);
 
-    if (mRedirectTabPromise) {
+    if (mRedirectContentProcessIdPromise) {
       PushRedirectAsyncFunc(&nsHttpChannel::ContinueOnStartRequest1);
       rv = StartCrossProcessRedirect();
       if (NS_SUCCEEDED(rv)) {
@@ -7771,7 +7825,7 @@ nsHttpChannel::OnStopRequest(nsIRequest* request, nsresult status) {
   // If this load failed because of a security error, it may be because we
   // are in a captive portal - trigger an async check to make sure.
   int32_t nsprError = -1 * NS_ERROR_GET_CODE(status);
-  if (mozilla::psm::IsNSSErrorCode(nsprError)) {
+  if (mozilla::psm::IsNSSErrorCode(nsprError) && IsHTTPS()) {
     gIOService->RecheckCaptivePortal();
   }
 
@@ -7952,9 +8006,10 @@ nsresult nsHttpChannel::ContinueOnStopRequestAfterAuthRetry(
       MOZ_ASSERT(!mOnStartRequestCalled,
                  "We should not call OnStartRequest twice.");
       nsCOMPtr<nsIStreamListener> listener(mListener);
-      listener->OnStartRequest(this);
       mOnStartRequestCalled = true;
+      listener->OnStartRequest(this);
     } else {
+      mOnStartRequestCalled = true;
       NS_WARNING("OnStartRequest skipped because of null listener");
     }
   }
@@ -8155,9 +8210,10 @@ nsresult nsHttpChannel::ContinueOnStopRequest(nsresult aStatus, bool aIsFromNet,
     MOZ_ASSERT(mOnStartRequestCalled,
                "OnStartRequest should be called before OnStopRequest");
     MOZ_ASSERT(!mOnStopRequestCalled, "We should not call OnStopRequest twice");
-    mListener->OnStopRequest(this, aStatus);
     mOnStopRequestCalled = true;
+    mListener->OnStopRequest(this, aStatus);
   }
+  mOnStopRequestCalled = true;
 
   // The prefetch needs to be released on the main thread
   mDNSPrefetch = nullptr;
@@ -10226,8 +10282,14 @@ nsresult nsHttpChannel::RedirectToInterceptedChannel() {
 }
 
 void nsHttpChannel::ReEvaluateReferrerAfterTrackingStatusIsKnown() {
-  if (StaticPrefs::network_cookie_cookieBehavior() ==
-      nsICookieService::BEHAVIOR_REJECT_TRACKER) {
+  nsCOMPtr<nsICookieSettings> cs;
+  if (mLoadInfo) {
+    Unused << mLoadInfo->GetCookieSettings(getter_AddRefs(cs));
+  }
+  if (!cs) {
+    cs = net::CookieSettings::Create();
+  }
+  if (cs->GetRejectThirdPartyTrackers()) {
     bool isPrivate =
         mLoadInfo && mLoadInfo->GetOriginAttributes().mPrivateBrowsingId > 0;
     // If our referrer has been set before, and our referrer policy is unset

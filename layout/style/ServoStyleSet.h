@@ -108,7 +108,8 @@ class ServoStyleSet {
   // are mutated from CSSOM.
   void RuleAdded(StyleSheet&, css::Rule&);
   void RuleRemoved(StyleSheet&, css::Rule&);
-  void RuleChanged(StyleSheet& aSheet, css::Rule* aRule);
+  void RuleChanged(StyleSheet&, css::Rule* aRule);
+  void StyleSheetCloned(StyleSheet&);
 
   // Runs style invalidation due to document state changes.
   void InvalidateStyleForDocumentStateChanges(EventStates aStatesChanged);
@@ -168,14 +169,31 @@ class ServoStyleSet {
   // matching for them is a first step.)
   already_AddRefed<ComputedStyle> ResolveStyleForPlaceholder();
 
-  // Get a ComputedStyle for a pseudo-element.  aParentElement must be
-  // non-null.  aPseudoID is the PseudoStyleType for the
-  // pseudo-element.  aPseudoElement must be non-null if the pseudo-element
-  // type is one that allows user action pseudo-classes after it or allows
-  // style attributes; otherwise, it is ignored.
+  // Returns whether a given pseudo-element should exist or not.
+  static bool GeneratedContentPseudoExists(const ComputedStyle& aParentStyle,
+                                           const ComputedStyle& aPseudoStyle);
+
+  enum class IsProbe {
+    No,
+    Yes,
+  };
+
+  // Get a style for a pseudo-element.
+  //
+  // If IsProbe is Yes, then no style is returned if there are no rules matching
+  // for the pseudo-element, or GeneratedContentPseudoExists returns false.
+  //
+  // If IsProbe is No, then the style is guaranteed to be non-null.
   already_AddRefed<ComputedStyle> ResolvePseudoElementStyle(
-      dom::Element* aOriginatingElement, PseudoStyleType aType,
-      ComputedStyle* aParentStyle, dom::Element* aPseudoElement);
+      const dom::Element& aOriginatingElement, PseudoStyleType,
+      ComputedStyle* aParentStyle, IsProbe = IsProbe::No);
+
+  already_AddRefed<ComputedStyle> ProbePseudoElementStyle(
+      const dom::Element& aOriginatingElement, PseudoStyleType aType,
+      ComputedStyle* aParentStyle) {
+    return ResolvePseudoElementStyle(aOriginatingElement, aType, aParentStyle,
+                                     IsProbe::Yes);
+  }
 
   // Resolves style for a (possibly-pseudo) Element without assuming that the
   // style has been resolved. If the element was unstyled and a new style
@@ -218,11 +236,6 @@ class ServoStyleSet {
   }
 
   void AddDocStyleSheet(StyleSheet* aSheet);
-
-  // check whether there is ::before/::after style for an element
-  already_AddRefed<ComputedStyle> ProbePseudoElementStyle(
-      const dom::Element& aOriginatingElement, PseudoStyleType aType,
-      ComputedStyle* aParentStyle);
 
   /**
    * Performs a Servo traversal to compute style for all dirty nodes in the
@@ -379,12 +392,6 @@ class ServoStyleSet {
   // sheet inners.
   bool EnsureUniqueInnerOnCSSSheets();
 
-  // Called by StyleSheet::EnsureUniqueInner to let us know it cloned
-  // its inner.
-  void SetNeedsRestyleAfterEnsureUniqueInner() {
-    mNeedsRestyleAfterEnsureUniqueInner = true;
-  }
-
   // Returns the style rule map.
   ServoStyleRuleMap* StyleRuleMap();
 
@@ -434,6 +441,19 @@ class ServoStyleSet {
   friend class PostTraversalTask;
 
   bool ShouldTraverseInParallel() const;
+
+  /**
+   * Forces all the ShadowRoot styles to be dirty.
+   *
+   * Only to be used for:
+   *
+   *  * Devtools (dealing with sheet cloning).
+   *  * Compatibility-mode changes.
+   *
+   * Try to do something more incremental for other callers that are exposed to
+   * the web.
+   */
+  void ForceDirtyAllShadowStyles();
 
   /**
    * Gets the pending snapshots to handle from the restyle manager.

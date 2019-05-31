@@ -88,9 +88,7 @@ class BrowsingContextBase {
 // Trees of BrowsingContexts should only ever contain nodes of the
 // same BrowsingContext::Type. This is enforced by asserts in the
 // BrowsingContext::Create* methods.
-class BrowsingContext : public nsWrapperCache,
-                        public SupportsWeakPtr<BrowsingContext>,
-                        public BrowsingContextBase {
+class BrowsingContext : public nsWrapperCache, public BrowsingContextBase {
  public:
   enum class Type { Chrome, Content };
 
@@ -481,7 +479,7 @@ typedef BrowsingContext::Children BrowsingContextChildren;
 // Allow sending BrowsingContext objects over IPC.
 namespace ipc {
 template <>
-struct IPDLParamTraits<dom::BrowsingContext> {
+struct IPDLParamTraits<dom::BrowsingContext*> {
   static void Write(IPC::Message* aMsg, IProtocol* aActor,
                     dom::BrowsingContext* aParam);
   static bool Read(const IPC::Message* aMsg, PickleIterator* aIter,

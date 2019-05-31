@@ -60,7 +60,8 @@ class VRDisplayExternal : public VRDisplayHost {
  private:
   bool PopulateLayerTexture(const layers::SurfaceDescriptor& aTexture,
                             VRLayerTextureType* aTextureType,
-                            VRLayerTextureHandle* aTextureHandle);
+                            VRLayerTextureHandle* aTextureHandle,
+                            IntSize_POD* aTextureSize);
   void PushState(bool aNotifyCond = false);
 #if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GONK)
   bool PullState(const std::function<bool()>& aWaitCondition = nullptr);

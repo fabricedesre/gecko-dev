@@ -8,7 +8,6 @@
 
 #include "BrowserChild.h"
 
-#include "gfxPrefs.h"
 #ifdef ACCESSIBILITY
 #  include "mozilla/a11y/DocAccessibleChild.h"
 #endif
@@ -132,6 +131,7 @@
 #include "nsWebBrowser.h"
 #include "mozilla/dom/WindowGlobalChild.h"
 #include "MMPrinter.h"
+#include "mozilla/ResultExtensions.h"
 
 #ifdef XP_WIN
 #  include "mozilla/plugins/PluginWidgetChild.h"
@@ -394,22 +394,22 @@ BrowserChild::BrowserChild(ContentChild* aManager, const TabId& aTabId,
       mDidLoadURLInit(false),
       mAwaitingLA(false),
       mSkipKeyPress(false),
-      mLayersObserverEpoch {
-  1
-}
+      mLayersObserverEpoch{1},
 #if defined(XP_WIN) && defined(ACCESSIBILITY)
-, mNativeWindowHandle(0)
+      mNativeWindowHandle(0),
 #endif
 #if defined(ACCESSIBILITY)
-      ,
-    mTopLevelDocAccessibleChild(nullptr)
+      mTopLevelDocAccessibleChild(nullptr),
 #endif
-        ,
-    mPendingDocShellIsActive(false), mPendingDocShellReceivedMessage(false),
-    mPendingRenderLayers(false),
-    mPendingRenderLayersReceivedMessage(false), mPendingLayersObserverEpoch{0},
-    mPendingDocShellBlockers(0), mCancelContentJSEpoch(0),
-    mWidgetNativeData(0) {
+      mShouldSendWebProgressEventsToParent(false),
+      mPendingDocShellIsActive(false),
+      mPendingDocShellReceivedMessage(false),
+      mPendingRenderLayers(false),
+      mPendingRenderLayersReceivedMessage(false),
+      mPendingLayersObserverEpoch{0},
+      mPendingDocShellBlockers(0),
+      mCancelContentJSEpoch(0),
+      mWidgetNativeData(0) {
   mozilla::HoldJSObjects(this);
 
   nsWeakPtr weakPtrThis(do_GetWeakReference(
@@ -543,8 +543,9 @@ nsresult BrowserChild::Init(mozIDOMWindowProxy* aParent) {
   MOZ_ASSERT(docShell);
 
   const uint32_t notifyMask =
-      nsIWebProgress::NOTIFY_PROGRESS | nsIWebProgress::NOTIFY_STATUS |
-      nsIWebProgress::NOTIFY_REFRESH | nsIWebProgress::NOTIFY_CONTENT_BLOCKING;
+      nsIWebProgress::NOTIFY_STATE_ALL | nsIWebProgress::NOTIFY_PROGRESS |
+      nsIWebProgress::NOTIFY_STATUS | nsIWebProgress::NOTIFY_REFRESH |
+      nsIWebProgress::NOTIFY_CONTENT_BLOCKING;
 
   mStatusFilter = new nsBrowserStatusFilter();
 
@@ -1809,7 +1810,7 @@ mozilla::ipc::IPCResult BrowserChild::RecvRealTouchEvent(
 
   if (localEvent.mMessage == eTouchStart && AsyncPanZoomEnabled()) {
     nsCOMPtr<Document> document = GetTopLevelDocument();
-    if (gfxPrefs::TouchActionEnabled()) {
+    if (StaticPrefs::TouchActionEnabled()) {
       APZCCallbackHelper::SendSetAllowedTouchBehaviorNotification(
           mPuppetWidget, document, localEvent, aInputBlockId,
           mSetAllowedTouchBehaviorCallback);
@@ -1940,8 +1941,8 @@ mozilla::ipc::IPCResult BrowserChild::RecvNativeSynthesisResponse(
 }
 
 mozilla::ipc::IPCResult BrowserChild::RecvFlushTabState(
-    const uint32_t& aFlushId) {
-  UpdateSessionStore(aFlushId);
+    const uint32_t& aFlushId, const bool& aIsFinal) {
+  UpdateSessionStore(aFlushId, aIsFinal);
   return IPC_OK();
 }
 
@@ -3453,6 +3454,11 @@ void BrowserChild::BeforeUnloadRemoved() {
   }
 }
 
+NS_IMETHODIMP BrowserChild::BeginSendingWebProgressEventsToParent() {
+  mShouldSendWebProgressEventsToParent = true;
+  return NS_OK;
+}
+
 mozilla::dom::TabGroup* BrowserChild::TabGroup() { return mTabGroup; }
 
 nsresult BrowserChild::GetHasSiblings(bool* aHasSiblings) {
@@ -3469,7 +3475,50 @@ NS_IMETHODIMP BrowserChild::OnStateChange(nsIWebProgress* aWebProgress,
                                           nsIRequest* aRequest,
                                           uint32_t aStateFlags,
                                           nsresult aStatus) {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  if (!IPCOpen() || !mShouldSendWebProgressEventsToParent) {
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(WebNavigation());
+  if (!docShell) {
+    return NS_OK;
+  }
+
+  RefPtr<Document> document;
+  if (nsCOMPtr<nsPIDOMWindowOuter> outerWindow = do_GetInterface(docShell)) {
+    document = outerWindow->GetExtantDoc();
+  } else {
+    return NS_OK;
+  }
+
+  Maybe<WebProgressData> webProgressData;
+  Maybe<WebProgressStateChangeData> stateChangeData;
+  RequestData requestData;
+
+  MOZ_TRY(PrepareProgressListenerData(aWebProgress, aRequest, webProgressData,
+                                      requestData));
+
+  if (webProgressData->isTopLevel()) {
+    stateChangeData.emplace();
+
+    stateChangeData->isNavigating() = docShell->GetIsNavigating();
+    stateChangeData->mayEnableCharacterEncodingMenu() =
+        docShell->GetMayEnableCharacterEncodingMenu();
+
+    if (document && aStateFlags & nsIWebProgressListener::STATE_STOP) {
+      document->GetContentType(stateChangeData->contentType());
+      document->GetCharacterSet(stateChangeData->charset());
+      stateChangeData->documentURI() = document->GetDocumentURIObject();
+    } else {
+      stateChangeData->contentType().SetIsVoid(true);
+      stateChangeData->charset().SetIsVoid(true);
+    }
+  }
+
+  Unused << SendOnStateChange(webProgressData, requestData, aStateFlags,
+                              aStatus, stateChangeData);
+
+  return NS_OK;
 }
 
 NS_IMETHODIMP BrowserChild::OnProgressChange(nsIWebProgress* aWebProgress,
@@ -3478,7 +3527,7 @@ NS_IMETHODIMP BrowserChild::OnProgressChange(nsIWebProgress* aWebProgress,
                                              int32_t aMaxSelfProgress,
                                              int32_t aCurTotalProgress,
                                              int32_t aMaxTotalProgress) {
-  if (!IPCOpen()) {
+  if (!IPCOpen() || !mShouldSendWebProgressEventsToParent) {
     return NS_OK;
   }
 
@@ -3507,7 +3556,7 @@ NS_IMETHODIMP BrowserChild::OnStatusChange(nsIWebProgress* aWebProgress,
                                            nsIRequest* aRequest,
                                            nsresult aStatus,
                                            const char16_t* aMessage) {
-  if (!IPCOpen()) {
+  if (!IPCOpen() || !mShouldSendWebProgressEventsToParent) {
     return NS_OK;
   }
 
@@ -3534,7 +3583,7 @@ NS_IMETHODIMP BrowserChild::OnSecurityChange(nsIWebProgress* aWebProgress,
 NS_IMETHODIMP BrowserChild::OnContentBlockingEvent(nsIWebProgress* aWebProgress,
                                                    nsIRequest* aRequest,
                                                    uint32_t aEvent) {
-  if (!IPCOpen()) {
+  if (!IPCOpen() || !mShouldSendWebProgressEventsToParent) {
     return NS_OK;
   }
 
@@ -3626,7 +3675,7 @@ nsresult BrowserChild::PrepareProgressListenerData(
   return NS_OK;
 }
 
-bool BrowserChild::UpdateSessionStore(uint32_t aFlushId) {
+bool BrowserChild::UpdateSessionStore(uint32_t aFlushId, bool aIsFinal) {
   if (!mSessionStoreListener) {
     return false;
   }
@@ -3649,7 +3698,7 @@ bool BrowserChild::UpdateSessionStore(uint32_t aFlushId) {
   }
 
   Unused << SendSessionStoreUpdate(docShellCaps, privatedMode, positions,
-                                   positionDescendants, aFlushId);
+                                   positionDescendants, aFlushId, aIsFinal);
   return true;
 }
 

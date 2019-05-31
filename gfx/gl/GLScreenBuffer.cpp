@@ -7,7 +7,7 @@
 
 #include <cstring>
 #include "CompositorTypes.h"
-#include "gfxPrefs.h"
+#include "mozilla/StaticPrefs.h"
 #include "GLContext.h"
 #include "GLBlitHelper.h"
 #include "GLReadTexImageHelper.h"
@@ -73,11 +73,11 @@ UniquePtr<SurfaceFactory> GLScreenBuffer::CreateFactory(
   const bool useANGLE = compositorConnection->GetCompositorUseANGLE();
 
   const bool useGl =
-      !gfxPrefs::WebGLForceLayersReadback() &&
+      !StaticPrefs::WebGLForceLayersReadback() &&
       (backend == layers::LayersBackend::LAYERS_OPENGL ||
        (backend == layers::LayersBackend::LAYERS_WR && !useANGLE));
   const bool useD3D =
-      !gfxPrefs::WebGLForceLayersReadback() &&
+      !StaticPrefs::WebGLForceLayersReadback() &&
       (backend == layers::LayersBackend::LAYERS_D3D11 ||
        (backend == layers::LayersBackend::LAYERS_WR && useANGLE));
 
@@ -92,7 +92,7 @@ UniquePtr<SurfaceFactory> GLScreenBuffer::CreateFactory(
     factory = MakeUnique<SurfaceFactory_GLTexture>(mGLContext, caps, ipcChannel,
                                                    mFlags);
 #elif defined(MOZ_WIDGET_ANDROID)
-    if (XRE_IsParentProcess() && !gfxPrefs::WebGLSurfaceTextureEnabled()) {
+    if (XRE_IsParentProcess() && !StaticPrefs::WebGLSurfaceTextureEnabled()) {
       factory = SurfaceFactory_EGLImage::Create(gl, caps, ipcChannel, flags);
     } else {
       factory =
@@ -125,7 +125,7 @@ UniquePtr<SurfaceFactory> GLScreenBuffer::CreateFactory(
           SurfaceFactory_ANGLEShareHandle::Create(gl, caps, ipcChannel, flags);
     }
 
-    if (!factory && gfxPrefs::WebGLDXGLEnabled()) {
+    if (!factory && StaticPrefs::WebGLDXGLEnabled()) {
       factory =
           SurfaceFactory_D3D11Interop::Create(gl, caps, ipcChannel, flags);
     }

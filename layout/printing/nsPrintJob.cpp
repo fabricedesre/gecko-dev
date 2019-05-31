@@ -153,9 +153,8 @@ static const char* gPrintFrameTypeStr[] = {"kNoFrames", "kFramesAsIs",
                                            "kSelectedFrame", "kEachFrameSep"};
 static const char* gFrameHowToEnableStr[] = {
     "kFrameEnableNone", "kFrameEnableAll", "kFrameEnableAsIsAndEach"};
-static const char* gPrintRangeStr[] = {"kRangeAllPages",
-                                       "kRangeSpecifiedPageRange",
-                                       "kRangeSelection", "kRangeFocusFrame"};
+static const char* gPrintRangeStr[] = {
+    "kRangeAllPages", "kRangeSpecifiedPageRange", "kRangeSelection"};
 
 // This processes the selection on aOrigDoc and creates an inverted selection on
 // aDoc, which it then deletes. If the start or end of the inverted selection
@@ -498,6 +497,37 @@ static nsresult EnsureSettingsHasPrinterNameSet(
 #endif
 }
 
+static bool DocHasPrintCallbackCanvas(Document* aDoc, void* aData) {
+  if (!aDoc) {
+    return true;
+  }
+  Element* root = aDoc->GetRootElement();
+  if (!root) {
+    return true;
+  }
+  RefPtr<nsContentList> canvases =
+      NS_GetContentList(root, kNameSpaceID_XHTML, NS_LITERAL_STRING("canvas"));
+  uint32_t canvasCount = canvases->Length(true);
+  for (uint32_t i = 0; i < canvasCount; ++i) {
+    HTMLCanvasElement* canvas =
+        HTMLCanvasElement::FromNodeOrNull(canvases->Item(i, false));
+    if (canvas && canvas->GetMozPrintCallback()) {
+      // This subdocument has a print callback. Set result and return false to
+      // stop iteration.
+      *static_cast<bool*>(aData) = true;
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool AnySubdocHasPrintCallbackCanvas(Document* aDoc) {
+  bool result = false;
+  aDoc->EnumerateSubDocuments(&DocHasPrintCallbackCanvas,
+                              static_cast<void*>(&result));
+  return result;
+}
+
 //-------------------------------------------------------
 
 NS_IMPL_ISUPPORTS(nsPrintJob, nsIWebProgressListener, nsISupportsWeakReference,
@@ -549,6 +579,28 @@ nsresult nsPrintJob::Initialize(nsIDocumentViewerPrint* aDocViewerPrint,
   // we need to know about the original document should be checked and stored
   // here instead.
   mOriginalDoc = aOriginalDoc;
+
+  // Anything state that we need from aOriginalDoc must be fetched and stored
+  // here, since the document that the user selected to print may mutate
+  // across consecutive PrintPreview() calls.
+
+  Element* root = aOriginalDoc->GetRootElement();
+  mDisallowSelectionPrint =
+      root &&
+      root->HasAttr(kNameSpaceID_None, nsGkAtoms::mozdisallowselectionprint);
+
+  nsCOMPtr<nsIDocShellTreeOwner> owner;
+  aDocShell->GetTreeOwner(getter_AddRefs(owner));
+  nsCOMPtr<nsIWebBrowserChrome> browserChrome = do_GetInterface(owner);
+  if (browserChrome) {
+    browserChrome->IsWindowModal(&mIsForModalWindow);
+  }
+
+  bool hasMozPrintCallback = false;
+  DocHasPrintCallbackCanvas(aOriginalDoc,
+                            static_cast<void*>(&hasMozPrintCallback));
+  mHasMozPrintCallback =
+      hasMozPrintCallback || AnySubdocHasPrintCallbackCanvas(aOriginalDoc);
 
   return NS_OK;
 }
@@ -934,55 +986,7 @@ nsresult nsPrintJob::DoCommonPrint(bool aIsPrintPreview,
     // we want to view every page in PrintPreview each time
     printData->mPrintSettings->SetPrintRange(nsIPrintSettings::kRangeAllPages);
   } else {
-    // Always check and set the print settings first and then fall back
-    // onto the PrintService if there isn't a PrintSettings
-    //
-    // Posiible Usage values:
-    //   nsIPrintSettings::kUseInternalDefault
-    //   nsIPrintSettings::kUseSettingWhenPossible
-    //
-    // NOTE: The consts are the same for PrintSettings and PrintSettings
-    int16_t printFrameTypeUsage = nsIPrintSettings::kUseSettingWhenPossible;
-    printData->mPrintSettings->GetPrintFrameTypeUsage(&printFrameTypeUsage);
-
-    // Ok, see if we are going to use our value and override the default
-    if (printFrameTypeUsage == nsIPrintSettings::kUseSettingWhenPossible) {
-      // Get the Print Options/Settings PrintFrameType to see what is preferred
-      int16_t printFrameType = nsIPrintSettings::kEachFrameSep;
-      printData->mPrintSettings->GetPrintFrameType(&printFrameType);
-
-      // Don't let anybody do something stupid like try to set it to
-      // kNoFrames when we are printing a FrameSet
-      if (printFrameType == nsIPrintSettings::kNoFrames) {
-        printData->mPrintFrameType = nsIPrintSettings::kEachFrameSep;
-        printData->mPrintSettings->SetPrintFrameType(
-            printData->mPrintFrameType);
-      } else {
-        // First find out from the PrinService what options are available
-        // to us for Printing FrameSets
-        int16_t howToEnableFrameUI;
-        printData->mPrintSettings->GetHowToEnableFrameUI(&howToEnableFrameUI);
-        if (howToEnableFrameUI != nsIPrintSettings::kFrameEnableNone) {
-          switch (howToEnableFrameUI) {
-            case nsIPrintSettings::kFrameEnableAll:
-              printData->mPrintFrameType = printFrameType;
-              break;
-
-            case nsIPrintSettings::kFrameEnableAsIsAndEach:
-              if (printFrameType != nsIPrintSettings::kSelectedFrame) {
-                printData->mPrintFrameType = printFrameType;
-              } else {  // revert back to a good value
-                printData->mPrintFrameType = nsIPrintSettings::kEachFrameSep;
-              }
-              break;
-          }  // switch
-          printData->mPrintSettings->SetPrintFrameType(
-              printData->mPrintFrameType);
-        }
-      }
-    } else {
-      printData->mPrintSettings->GetPrintFrameType(&printData->mPrintFrameType);
-    }
+    printData->mPrintSettings->GetPrintFrameType(&printData->mPrintFrameType);
   }
 
   if (printData->mPrintFrameType == nsIPrintSettings::kEachFrameSep) {
@@ -1033,14 +1037,15 @@ nsresult nsPrintJob::DoCommonPrint(bool aIsPrintPreview,
 }
 
 //---------------------------------------------------------------------------------
-nsresult nsPrintJob::Print(nsIPrintSettings* aPrintSettings,
+nsresult nsPrintJob::Print(Document* aSourceDoc,
+                           nsIPrintSettings* aPrintSettings,
                            nsIWebProgressListener* aWebProgressListener) {
   // If we have a print preview document, use that instead of the original
   // mDocument. That way animated images etc. get printed using the same state
   // as in print preview.
   Document* doc = mPrtPreview && mPrtPreview->mPrintObject
-                      ? mPrtPreview->mPrintObject->mDocument
-                      : mOriginalDoc;
+                      ? mPrtPreview->mPrintObject->mDocument.get()
+                      : aSourceDoc;
 
   return CommonPrint(false, aPrintSettings, aWebProgressListener, doc);
 }
@@ -1214,22 +1219,14 @@ void nsPrintJob::ShowPrintProgress(bool aIsForPrinting, bool& aDoNotify) {
     nsCOMPtr<nsIPrintingPromptService> printPromptService(
         do_GetService(kPrintingPromptService));
     if (printPromptService) {
-      nsPIDOMWindowOuter* domWin = mOriginalDoc->GetWindow();
-      if (!domWin) return;
-
-      nsCOMPtr<nsIDocShell> docShell = domWin->GetDocShell();
-      if (!docShell) return;
-      nsCOMPtr<nsIDocShellTreeOwner> owner;
-      docShell->GetTreeOwner(getter_AddRefs(owner));
-      nsCOMPtr<nsIWebBrowserChrome> browserChrome = do_GetInterface(owner);
-      if (!browserChrome) return;
-      bool isModal = true;
-      browserChrome->IsWindowModal(&isModal);
-      if (isModal) {
+      if (mIsForModalWindow) {
         // Showing a print progress dialog when printing a modal window
         // isn't supported. See bug 301560.
         return;
       }
+
+      nsPIDOMWindowOuter* domWin = mOriginalDoc->GetWindow();
+      if (!domWin) return;
 
       nsCOMPtr<nsIWebProgressListener> printProgressListener;
 
@@ -2577,53 +2574,6 @@ void nsPrintJob::EllipseLongString(nsAString& aStr, const uint32_t aLen,
       aStr.AppendLiteral("...");
     }
   }
-}
-
-static bool DocHasPrintCallbackCanvas(Document* aDoc, void* aData) {
-  if (!aDoc) {
-    return true;
-  }
-  Element* root = aDoc->GetRootElement();
-  if (!root) {
-    return true;
-  }
-  RefPtr<nsContentList> canvases =
-      NS_GetContentList(root, kNameSpaceID_XHTML, NS_LITERAL_STRING("canvas"));
-  uint32_t canvasCount = canvases->Length(true);
-  for (uint32_t i = 0; i < canvasCount; ++i) {
-    HTMLCanvasElement* canvas =
-        HTMLCanvasElement::FromNodeOrNull(canvases->Item(i, false));
-    if (canvas && canvas->GetMozPrintCallback()) {
-      // This subdocument has a print callback. Set result and return false to
-      // stop iteration.
-      *static_cast<bool*>(aData) = true;
-      return false;
-    }
-  }
-  return true;
-}
-
-static bool DocHasPrintCallbackCanvas(Document* aDoc) {
-  bool result = false;
-  aDoc->EnumerateSubDocuments(&DocHasPrintCallbackCanvas,
-                              static_cast<void*>(&result));
-  return result;
-}
-
-/**
- * Checks to see if the document this print engine is associated with has any
- * canvases that have a mozPrintCallback.
- * https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement#Properties
- */
-bool nsPrintJob::HasPrintCallbackCanvas() {
-  if (!mOriginalDoc) {
-    return false;
-  }
-  // First check this mOriginalDoc.
-  bool result = false;
-  DocHasPrintCallbackCanvas(mOriginalDoc, static_cast<void*>(&result));
-  // Also check the sub documents.
-  return result || DocHasPrintCallbackCanvas(mOriginalDoc);
 }
 
 //-------------------------------------------------------

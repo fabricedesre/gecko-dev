@@ -3084,16 +3084,13 @@ exports.CSS_PROPERTIES = {
       "animation-play-state",
       "animation-fill-mode",
       "animation-delay",
-      "scroll-snap-points-x",
-      "scroll-snap-points-y",
-      "scroll-snap-destination",
-      "scroll-snap-coordinate",
       "transform",
       "rotate",
       "scale",
       "translate",
       "offset-path",
       "offset-distance",
+      "offset-rotate",
       "scroll-behavior",
       "scroll-snap-align",
       "scroll-snap-type",
@@ -8313,6 +8310,21 @@ exports.CSS_PROPERTIES = {
       "unset"
     ]
   },
+  "offset-rotate": {
+    "isInherited": false,
+    "subproperties": [
+      "offset-rotate"
+    ],
+    "supports": [],
+    "values": [
+      "auto",
+      "inherit",
+      "initial",
+      "reverse",
+      "revert",
+      "unset"
+    ]
+  },
   "opacity": {
     "isInherited": false,
     "subproperties": [
@@ -10660,6 +10672,10 @@ exports.PREFERENCES = [
     "layout.css.osx-font-smoothing.enabled"
   ],
   [
+    "offset-rotate",
+    "layout.css.motion-path.enabled"
+  ],
+  [
     "overflow-anchor",
     "layout.css.scroll-anchoring.enabled"
   ],
@@ -10720,28 +10736,12 @@ exports.PREFERENCES = [
     "layout.css.individual-transform.enabled"
   ],
   [
-    "scroll-snap-coordinate",
-    "layout.css.scroll-snap.enabled"
-  ],
-  [
     "scrollbar-color",
     "layout.css.scrollbar-color.enabled"
   ],
   [
     "translate",
     "layout.css.individual-transform.enabled"
-  ],
-  [
-    "scroll-snap-points-x",
-    "layout.css.scroll-snap.enabled"
-  ],
-  [
-    "scroll-snap-points-y",
-    "layout.css.scroll-snap.enabled"
-  ],
-  [
-    "scroll-snap-destination",
-    "layout.css.scroll-snap.enabled"
   ],
   [
     "-moz-binding",

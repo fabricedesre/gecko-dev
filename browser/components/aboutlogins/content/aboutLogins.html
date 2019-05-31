@@ -6,7 +6,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; object-src 'none'; script-src resource: chrome:; connect-src https:; img-src https: data: blob:; style-src 'unsafe-inline';"/>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; object-src 'none'; script-src resource: chrome:; img-src data: blob:;"/>
     <title data-l10n-id="about-logins-page-title"></title>
     <link rel="localization" href="browser/aboutLogins.ftl">
     <script defer="defer" src="chrome://browser/content/aboutlogins/components/reflected-fluent-element.js"></script>
@@ -25,6 +25,7 @@
       <img id="branding-logo" src="chrome://branding/content/aboutlogins.svg" alt=""/>
       <login-filter data-l10n-id="login-filter"
                     data-l10n-attrs="placeholder"></login-filter>
+      <button id="create-login-button" data-l10n-id="create-login-button"></button>
     </header>
     <login-list data-l10n-id="login-list"
                 data-l10n-attrs="count"
@@ -38,9 +39,11 @@
                                  copied-username-button,
                                  delete-button,
                                  edit-button,
+                                 field-required-symbol,
                                  hostname-label,
                                  modal-input-reveal-checkbox-hide,
                                  modal-input-reveal-checkbox-show,
+                                 new-login-title,
                                  open-site-button,
                                  password-label,
                                  save-changes-button,
@@ -77,7 +80,8 @@
       <div class="detail-row">
         <label>
           <span class="hostname-label field-label"></span>
-          <span class="hostname"/>
+          <span class="hostname-saved-value"></span>
+          <input type="url" name="hostname" required />
         </label>
         <button class="open-site-button"></button>
       </div>
@@ -91,7 +95,7 @@
       <div class="detail-row">
         <label>
           <span class="password-label field-label"></span>
-          <modal-input type="password" name="password"/>
+          <modal-input type="password" name="password" required />
         </label>
         <copy-to-clipboard-button class="copy-password-button"></copy-to-clipboard-button>
       </div>

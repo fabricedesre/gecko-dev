@@ -39,8 +39,6 @@
 #include "nsIContentPolicy.h"
 #include "SVGObserverUtils.h"
 
-#include "gfxPrefs.h"
-
 #include "mozAutoDocUpdate.h"
 #include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/AutoRestore.h"
@@ -529,7 +527,7 @@ void nsImageLoadingContent::MaybeForceSyncDecoding(
     // attribute on a timer.
     TimeStamp now = TimeStamp::Now();
     TimeDuration threshold = TimeDuration::FromMilliseconds(
-        gfxPrefs::ImageInferSrcAnimationThresholdMS());
+        StaticPrefs::ImageInferSrcAnimationThresholdMS());
 
     // If the length of time between request changes is less than the threshold,
     // then force sync decoding to eliminate flicker from the animation.
@@ -1621,7 +1619,7 @@ void nsImageLoadingContent::BindToTree(Document* aDocument, nsIContent* aParent,
   }
 }
 
-void nsImageLoadingContent::UnbindFromTree(bool aDeep, bool aNullParent) {
+void nsImageLoadingContent::UnbindFromTree(bool aNullParent) {
   // We may be leaving the document, so if our image is tracked, untrack it.
   nsCOMPtr<Document> doc = GetOurCurrentDoc();
   if (!doc) return;

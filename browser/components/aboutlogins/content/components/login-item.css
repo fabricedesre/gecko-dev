@@ -8,6 +8,11 @@
   padding-right: 40px;
 }
 
+:host([isNewLogin]) .hostname-saved-value,
+:host([isNewLogin]) copy-to-clipboard-button,
+:host([isNewLogin]) .open-site-button,
+:host([isNewLogin]) .meta-info,
+:host(:not([isNewLogin])) input[name="hostname"],
 :host(:not([editing])) .save-changes-button,
 :host(:not([editing])) .cancel-button {
   display: none;
@@ -66,6 +71,11 @@
   font-size: smaller;
   color: var(--in-content-deemphasized-text);
   margin-bottom: 5px;
+}
+
+.hostname-label::after,
+.password-label::after {
+  content: attr(field-required-symbol);
 }
 
 .meta-info {

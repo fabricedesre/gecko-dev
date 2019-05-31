@@ -110,17 +110,17 @@ class CharacterData : public nsIContent {
   nsresult BindToTree(Document* aDocument, nsIContent* aParent,
                       nsIContent* aBindingParent) override;
 
-  void UnbindFromTree(bool aDeep = true, bool aNullParent = true) override;
+  void UnbindFromTree(bool aNullParent = true) override;
 
   already_AddRefed<nsINodeList> GetChildren(uint32_t aFilter) final {
     return nullptr;
   }
 
   const nsTextFragment* GetText() override { return &mText; }
+  uint32_t TextLength() const final { return TextDataLength(); }
 
   const nsTextFragment& TextFragment() const { return mText; }
-
-  uint32_t TextLength() const final { return TextDataLength(); }
+  uint32_t TextDataLength() const { return mText.GetLength(); }
 
   /**
    * Set the text to the given value. If aNotify is true then
@@ -196,8 +196,6 @@ class CharacterData : public nsIContent {
   void DeleteData(uint32_t aOffset, uint32_t aCount, ErrorResult& rv);
   void ReplaceData(uint32_t aOffset, uint32_t aCount, const nsAString& aData,
                    ErrorResult& rv);
-
-  uint32_t TextDataLength() const { return mText.GetLength(); }
 
   //----------------------------------------
 

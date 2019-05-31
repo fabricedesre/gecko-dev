@@ -58,7 +58,7 @@ class SVGImageElement : public SVGImageElementBase,
                                 bool aNotify) override;
   virtual nsresult BindToTree(Document* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent) override;
-  virtual void UnbindFromTree(bool aDeep, bool aNullParent) override;
+  virtual void UnbindFromTree(bool aNullParent) override;
 
   virtual EventStates IntrinsicState() const override;
 
@@ -94,6 +94,8 @@ class SVGImageElement : public SVGImageElementBase,
   void GetDecoding(nsAString& aValue);
 
   already_AddRefed<Promise> Decode(ErrorResult& aRv);
+
+  static nsCSSPropertyID GetCSSPropertyIdForAttrEnum(uint8_t aAttrEnum);
 
  protected:
   nsresult LoadSVGImage(bool aForce, bool aNotify);

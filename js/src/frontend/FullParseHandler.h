@@ -440,35 +440,54 @@ class FullParseHandler {
     return true;
   }
 
-  MOZ_MUST_USE bool addClassMethodDefinition(ListNodeType memberList, Node key,
-                                             FunctionNodeType funNode,
-                                             AccessorType atype,
-                                             bool isStatic) {
-    MOZ_ASSERT(memberList->isKind(ParseNodeKind::ClassMemberList));
+  MOZ_MUST_USE ClassMethod* newClassMethodDefinition(Node key,
+                                                     FunctionNodeType funNode,
+                                                     AccessorType atype,
+                                                     bool isStatic) {
     MOZ_ASSERT(isUsableAsObjectPropertyName(key));
 
     checkAndSetIsDirectRHSAnonFunction(funNode);
 
-    ClassMethod* classMethod = new_<ClassMethod>(key, funNode, atype, isStatic);
-    if (!classMethod) {
-      return false;
-    }
-    addList(/* list = */ memberList, /* kid = */ classMethod);
+    return new_<ClassMethod>(key, funNode, atype, isStatic);
+  }
+
+  MOZ_MUST_USE ClassField* newClassFieldDefinition(
+      Node name, FunctionNodeType initializer) {
+    MOZ_ASSERT(isUsableAsObjectPropertyName(name));
+
+    return new_<ClassField>(name, initializer);
+  }
+
+  MOZ_MUST_USE bool addClassMemberDefinition(ListNodeType memberList,
+                                             Node member) {
+    MOZ_ASSERT(memberList->isKind(ParseNodeKind::ClassMemberList));
+    // Constructors can be surrounded by LexicalScopes.
+    MOZ_ASSERT(member->isKind(ParseNodeKind::ClassMethod) ||
+               member->isKind(ParseNodeKind::ClassField) ||
+               (member->isKind(ParseNodeKind::LexicalScope) &&
+                member->as<LexicalScopeNode>().scopeBody()->isKind(
+                    ParseNodeKind::ClassMethod)));
+
+    addList(/* list = */ memberList, /* kid = */ member);
     return true;
   }
 
-  MOZ_MUST_USE bool addClassFieldDefinition(ListNodeType memberList, Node name,
-                                            FunctionNodeType initializer) {
-    MOZ_ASSERT(memberList->isKind(ParseNodeKind::ClassMemberList));
-    MOZ_ASSERT(isUsableAsObjectPropertyName(name));
-
-    ClassField* classField = new_<ClassField>(name, initializer);
-
-    if (!classField) {
-      return false;
+  void deleteConstructorScope(JSContext* cx, ListNodeType memberList) {
+    for (ParseNode* member : memberList->contents()) {
+      if (member->is<LexicalScopeNode>()) {
+        LexicalScopeNode* node = &member->as<LexicalScopeNode>();
+        MOZ_ASSERT(node->scopeBody()->isKind(ParseNodeKind::ClassMethod));
+        MOZ_ASSERT(node->scopeBody()->as<ClassMethod>().method().syntaxKind() ==
+                       FunctionSyntaxKind::ClassConstructor ||
+                   node->scopeBody()->as<ClassMethod>().method().syntaxKind() ==
+                       FunctionSyntaxKind::DerivedClassConstructor);
+        MOZ_ASSERT(!node->isEmptyScope());
+        MOZ_ASSERT(node->scopeBindings()->length == 1);
+        MOZ_ASSERT(node->scopeBindings()->trailingNames[0].name() ==
+                   cx->names().dotInitializers);
+        node->clearScopeBindings();
+      }
     }
-    addList(/* list = */ memberList, /* kid = */ classField);
-    return true;
   }
 
   UnaryNodeType newInitialYieldExpression(uint32_t begin, Node gen) {
@@ -754,14 +773,12 @@ class FullParseHandler {
   inline MOZ_MUST_USE bool setLastFunctionFormalParameterDefault(
       FunctionNodeType funNode, Node defaultValue);
 
- private:
   void checkAndSetIsDirectRHSAnonFunction(Node pn) {
     if (IsAnonymousFunctionDefinition(pn)) {
       pn->setDirectRHSAnonFunction(true);
     }
   }
 
- public:
   FunctionNodeType newFunction(FunctionSyntaxKind syntaxKind,
                                const TokenPos& pos) {
     return new_<FunctionNode>(syntaxKind, pos);

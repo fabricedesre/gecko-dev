@@ -31,7 +31,7 @@
 <?xml-stylesheet href="chrome://browser/skin/places/editBookmark.css" type="text/css"?>
 
 # All DTD information is stored in a separate file so that it can be shared by
-# hiddenWindow.xul.
+# hiddenWindowMac.xhtml.
 <!DOCTYPE window [
 #include browser-doctype.inc
 ]>
@@ -96,6 +96,7 @@
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-sidebar.js", this);
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-tabsintitlebar.js", this);
   Services.scriptloader.loadSubScript("chrome://browser/content/tabbrowser.js", this);
+  Services.scriptloader.loadSubScript("chrome://browser/content/tabbrowser-tab.js", this);
   Services.scriptloader.loadSubScript("chrome://browser/content/search/autocomplete-popup.js", this);
   Services.scriptloader.loadSubScript("chrome://browser/content/search/searchbar.js", this);
 
@@ -728,7 +729,7 @@
                   setfocus="false"
                   tooltip="tabbrowser-tab-tooltip"
                   stopwatchid="FX_TAB_CLICK_MS">
-              <tab class="tabbrowser-tab" selected="true" visuallyselected="true" fadein="true"/>
+              <tab is="tabbrowser-tab" class="tabbrowser-tab" selected="true" visuallyselected="true" fadein="true"/>
             </tabs>
 
             <toolbarbutton id="new-tab-button"
@@ -745,7 +746,8 @@
                            removable="true"/>
 
             <toolbarbutton id="alltabs-button"
-                           class="toolbarbutton-1 chromeclass-toolbar-additional tabs-alltabs-button badged-button"
+                           class="toolbarbutton-1 chromeclass-toolbar-additional tabs-alltabs-button"
+                           badged="true"
                            oncommand="gTabsPanel.showAllTabsPanel();"
                            label="&listAllTabs.label;"
                            tooltiptext="&listAllTabs.label;"
@@ -1021,7 +1023,8 @@
              during the customization of the toolbar, in the palette, and before
              the Downloads Indicator overlay is loaded. -->
         <toolbarbutton id="downloads-button"
-                       class="toolbarbutton-1 chromeclass-toolbar-additional badged-button"
+                       class="toolbarbutton-1 chromeclass-toolbar-additional"
+                       badged="true"
                        key="key_openDownloads"
                        onmousedown="DownloadsIndicatorView.onCommand(event);"
                        onkeypress="DownloadsIndicatorView.onCommand(event);"
@@ -1057,7 +1060,8 @@
                        tooltiptext="&libraryButton.tooltip;"
                        label="&places.library.title;"/>
 
-        <toolbarbutton id="fxa-toolbar-menu-button" class="toolbarbutton-1 badged-button chromeclass-toolbar-additional subviewbutton-nav"
+        <toolbarbutton id="fxa-toolbar-menu-button" class="toolbarbutton-1 chromeclass-toolbar-additional subviewbutton-nav"
+                       badged="true"
                        onmousedown="gSync.toggleAccountPanel('PanelUI-fxa', event)"
                        onkeypress="gSync.toggleAccountPanel('PanelUI-fxa', event)"
                        consumeanchor="fxa-toolbar-menu-button"
@@ -1084,7 +1088,8 @@
       <toolbaritem id="PanelUI-button"
                    removable="false">
         <toolbarbutton id="PanelUI-menu-button"
-                       class="toolbarbutton-1 badged-button"
+                       class="toolbarbutton-1"
+                       badged="true"
                        consumeanchor="PanelUI-button"
                        label="&brandShortName;"
                        tooltiptext="&appmenu.tooltip;"/>
@@ -1203,7 +1208,6 @@
                      type="menu"
                      label="&bookmarksMenuButton2.label;"
                      tooltip="dynamic-shortcut-tooltip"
-                     anchor="dropmarker"
                      ondragenter="PlacesMenuDNDHandler.onDragEnter(event);"
                      ondragover="PlacesMenuDNDHandler.onDragOver(event);"
                      ondragleave="PlacesMenuDNDHandler.onDragLeave(event);"

@@ -18,10 +18,12 @@
 #include "DecoderTraits.h"
 #include "nsIAudioChannelAgent.h"
 #include "mozilla/Attributes.h"
-#include "mozilla/dom/TextTrackManager.h"
-#include "mozilla/WeakPtr.h"
-#include "mozilla/dom/MediaKeys.h"
 #include "mozilla/StateWatching.h"
+#include "mozilla/WeakPtr.h"
+#include "mozilla/dom/HTMLMediaElementBinding.h"
+#include "mozilla/dom/MediaDebugInfoBinding.h"
+#include "mozilla/dom/MediaKeys.h"
+#include "mozilla/dom/TextTrackManager.h"
 #include "nsGkAtoms.h"
 #include "PrincipalChangeObserver.h"
 #include "nsStubMutationObserver.h"
@@ -32,7 +34,6 @@
 #  undef CurrentTime
 #endif
 
-#include "mozilla/dom/HTMLMediaElementBinding.h"
 
 // Define to output information on decoding and painting framerate
 /* #define DEBUG_FRAME_RATE 1 */
@@ -149,8 +150,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
   virtual nsresult BindToTree(Document* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent) override;
-  virtual void UnbindFromTree(bool aDeep = true,
-                              bool aNullParent = true) override;
+  virtual void UnbindFromTree(bool aNullParent = true) override;
   virtual void DoneCreatingElement() override;
 
   virtual bool IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
@@ -292,7 +292,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   // changed.
   void NotifyDecoderPrincipalChanged() final;
 
-  void GetEMEInfo(nsString& aEMEInfo);
+  void GetEMEInfo(dom::EMEDebugInfo& aInfo);
 
   class StreamCaptureTrackSource;
 
@@ -538,9 +538,6 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   bool AllowedToPlay() const;
 
   already_AddRefed<MediaSource> GetMozMediaSourceObject() const;
-  // Returns a string describing the state of the media player internal
-  // data. Used for debugging purposes.
-  void GetMozDebugReaderData(nsAString& aString);
 
   // Returns a promise which will be resolved after collecting debugging
   // data from decoder/reader/MDSM. Used for debugging purposes.
@@ -552,8 +549,6 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   // Returns a promise which will be resolved after collecting debugging
   // log associated with this element. Used for debugging purposes.
   already_AddRefed<Promise> MozRequestDebugLog(ErrorResult& aRv);
-
-  already_AddRefed<Promise> MozDumpDebugInfo();
 
   // For use by mochitests. Enabling pref "media.test.video-suspend"
   void SetVisible(bool aVisible);

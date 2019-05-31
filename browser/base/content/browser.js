@@ -41,6 +41,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   PageThumbs: "resource://gre/modules/PageThumbs.jsm",
   PanelMultiView: "resource:///modules/PanelMultiView.jsm",
   PanelView: "resource:///modules/PanelMultiView.jsm",
+  PermitUnloader: "resource://gre/actors/BrowserElementParent.jsm",
   PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
   PlacesUIUtils: "resource:///modules/PlacesUIUtils.jsm",
   PlacesTransactions: "resource://gre/modules/PlacesTransactions.jsm",
@@ -568,7 +569,7 @@ function UpdateBackForwardCommands(aWebNavigation) {
 
 /**
  * Click-and-Hold implementation for the Back and Forward buttons
- * XXXmano: should this live in toolbarbutton.xml?
+ * XXXmano: should this live in toolbarbutton.js?
  */
 function SetClickAndHoldHandlers() {
   // Bug 414797: Clone the back/forward buttons' context menu into both buttons.
@@ -579,13 +580,13 @@ function SetClickAndHoldHandlers() {
 
   let backButton = document.getElementById("back-button");
   backButton.setAttribute("type", "menu");
-  backButton.appendChild(popup);
+  backButton.prepend(popup);
   gClickAndHoldListenersOnElement.add(backButton);
 
   let forwardButton = document.getElementById("forward-button");
   popup = popup.cloneNode(true);
   forwardButton.setAttribute("type", "menu");
-  forwardButton.appendChild(popup);
+  forwardButton.prepend(popup);
   gClickAndHoldListenersOnElement.add(forwardButton);
 }
 
@@ -600,7 +601,7 @@ const gClickAndHoldListenersOnElement = {
       return;
 
     // Prevent the menupopup from opening immediately
-    aEvent.currentTarget.firstElementChild.hidden = true;
+    aEvent.currentTarget.menupopup.hidden = true;
 
     aEvent.currentTarget.addEventListener("mouseout", this);
     aEvent.currentTarget.addEventListener("mouseup", this);
@@ -1229,7 +1230,7 @@ function _loadURI(browser, uri, params = {}) {
 
   // !requiredRemoteType means we're loading in the parent/this process.
   if (!requiredRemoteType) {
-    browser.inLoadURI = true;
+    browser.isNavigating = true;
   }
   let loadURIOptions = {
     triggeringPrincipal,
@@ -1299,7 +1300,7 @@ function _loadURI(browser, uri, params = {}) {
     }
   } finally {
     if (!requiredRemoteType) {
-      browser.inLoadURI = false;
+      browser.isNavigating = false;
     }
   }
 }
@@ -1438,6 +1439,10 @@ var gBrowserInit = {
           }
         });
       }
+    }
+
+    if (Services.prefs.getBoolPref("toolkit.legacyUserProfileCustomizations.windowIcon", false)) {
+      document.documentElement.setAttribute("icon", "main-window");
     }
 
     // Call this after we set attributes that might change toolbars' computed
@@ -2599,19 +2604,6 @@ function loadURI(uri, referrerInfo, postData, allowThirdPartyFixup,
     throw new Error("Must load with a triggering Principal");
   }
 
-  // After Bug 965637 we can remove that Error because the CSP will not
-  // hang off the Principal anymore. Please note that the SystemPrincipal
-  // can not hold a CSP!
-  if (AppConstants.EARLY_BETA_OR_EARLIER) {
-    // Please note that the backend will still query the CSP from the Principal in
-    // release versions of Firefox. We use this error just to annotate all the
-    // callsites to explicitly pass a CSP before we can remove the CSP from
-    // the Principal within Bug 965637.
-    if (!triggeringPrincipal.isSystemPrincipal && triggeringPrincipal.csp && !csp) {
-      throw new Error("If Principal has CSP then we need an explicit CSP");
-    }
-  }
-
   try {
     openLinkIn(uri, "current",
                { referrerInfo,
@@ -3239,20 +3231,10 @@ var BrowserOnClick = {
         securityInfo = getSecurityInfo(securityInfoAsString);
         let errorInfo = getDetailedCertErrorInfo(location,
                                                  securityInfo);
-        let validityInfo = {
-          notAfter: securityInfo.serverCert.validity.notAfter / 1000,
-          notBefore: securityInfo.serverCert.validity.notBefore / 1000,
-        };
         browser.messageManager.sendAsyncMessage("CertErrorDetails", {
             code: securityInfo.errorCode,
             info: errorInfo,
             codeString: securityInfo.errorCodeString,
-            certIsUntrusted: securityInfo.isUntrusted,
-            certSubjectAltNames: securityInfo.serverCert.subjectAltNames,
-            validity: validityInfo,
-            url: location,
-            isDomainMismatch: securityInfo.isDomainMismatch,
-            isNotValidAtThisTime: securityInfo.isNotValidAtThisTime,
             frameId,
         });
         break;
@@ -5331,16 +5313,13 @@ var XULBrowserWindow = {
     this._sessionData.isPrivate = aIsPrivate;
   },
 
-  updateSessionStore: function XWB_updateSessionStore(aBrowser, aFlushId) {
-    let tab = gBrowser.getTabForBrowser(aBrowser);
-    if (tab) {
-      SessionStore.updateSessionStoreFromTablistener(tab, {
-        data: this._sessionData,
-        flushID: aFlushId,
-        isFinal: false,
-      });
-      this._sessionData = {};
-    }
+  updateSessionStore: function XWB_updateSessionStore(aBrowser, aFlushId, aIsFinal) {
+    SessionStore.updateSessionStoreFromTablistener(aBrowser, {
+      data: this._sessionData,
+      flushID: aFlushId,
+      isFinal: aIsFinal,
+    });
+    this._sessionData = {};
   },
 };
 
@@ -5800,19 +5779,6 @@ nsBrowserAccess.prototype = {
       Cu.reportError("nsBrowserAccess.openURI was passed a CPOW for aOpener. " +
                      "openURI should only ever be called from non-remote browsers.");
       throw Cr.NS_ERROR_FAILURE;
-    }
-
-    // After Bug 965637 we can remove that Error because the CSP will not
-    // hang off the Principal anymore. Please note that the SystemPrincipal
-    // can not hold a CSP!
-    if (AppConstants.EARLY_BETA_OR_EARLIER) {
-      // Please note that the backend will still query the CSP from the Principal in
-      // release versions of Firefox. We use this error just to annotate all the
-      // callsites to explicitly pass a CSP before we can remove the CSP from
-      // the Principal within Bug 965637.
-      if (!aTriggeringPrincipal.isSystemPrincipal && aTriggeringPrincipal.csp && !aCsp) {
-        throw new Error("If Principal has CSP then we need an explicit CSP");
-      }
     }
 
     var newWindow = null;
@@ -6507,9 +6473,6 @@ function handleLinkClick(event, href, linkNode) {
     !BrowserUtils.linkHasNoReferrer(linkNode),
     referrerURI);
 
-  // Bug 965637, query the CSP from the doc instead of the Principal
-  let csp = doc.nodePrincipal.csp;
-
   urlSecurityCheck(href, doc.nodePrincipal);
   let params = {
     charset: doc.characterSet,
@@ -6517,7 +6480,7 @@ function handleLinkClick(event, href, linkNode) {
     referrerInfo,
     originPrincipal: doc.nodePrincipal,
     triggeringPrincipal: doc.nodePrincipal,
-    csp,
+    csp: doc.csp,
     frameOuterWindowID,
   };
 
@@ -7253,7 +7216,7 @@ var CanvasPermissionPromptHelper = {
   },
 
   // aSubject is an nsIBrowser (e10s) or an nsIDOMWindow (non-e10s).
-  // aData is an URL string.
+  // aData is an Origin string.
   observe(aSubject, aTopic, aData) {
     if (aTopic != this._permissionsPrompt &&
         aTopic != this._permissionsPromptHideDoorHanger) {
@@ -7268,7 +7231,6 @@ var CanvasPermissionPromptHelper = {
       browser = aSubject;
     }
 
-    let uri = Services.io.newURI(aData);
     if (gBrowser.selectedBrowser !== browser) {
       // Must belong to some other window.
       return;
@@ -7276,17 +7238,21 @@ var CanvasPermissionPromptHelper = {
 
     let message = gNavigatorBundle.getFormattedString("canvas.siteprompt", ["<>"], 1);
 
-    function setCanvasPermission(aURI, aPerm, aPersistent) {
-      Services.perms.add(aURI, "canvas", aPerm,
-                          aPersistent ? Ci.nsIPermissionManager.EXPIRE_NEVER
-                                      : Ci.nsIPermissionManager.EXPIRE_SESSION);
+    let principal = Services.scriptSecurityManager
+                            .createCodebasePrincipalFromOrigin(aData);
+
+    function setCanvasPermission(aPerm, aPersistent) {
+      Services.perms.addFromPrincipal(
+        principal, "canvas", aPerm,
+        aPersistent ? Ci.nsIPermissionManager.EXPIRE_NEVER
+                    : Ci.nsIPermissionManager.EXPIRE_SESSION);
     }
 
     let mainAction = {
       label: gNavigatorBundle.getString("canvas.allow"),
       accessKey: gNavigatorBundle.getString("canvas.allow.accesskey"),
       callback(state) {
-        setCanvasPermission(uri, Ci.nsIPermissionManager.ALLOW_ACTION,
+        setCanvasPermission(Ci.nsIPermissionManager.ALLOW_ACTION,
                             state && state.checkboxChecked);
       },
     };
@@ -7295,7 +7261,7 @@ var CanvasPermissionPromptHelper = {
       label: gNavigatorBundle.getString("canvas.notAllow"),
       accessKey: gNavigatorBundle.getString("canvas.notAllow.accesskey"),
       callback(state) {
-        setCanvasPermission(uri, Ci.nsIPermissionManager.DENY_ACTION,
+        setCanvasPermission(Ci.nsIPermissionManager.DENY_ACTION,
                             state && state.checkboxChecked);
       },
     }];
@@ -7311,7 +7277,7 @@ var CanvasPermissionPromptHelper = {
 
     let options = {
       checkbox,
-      name: uri.asciiHost,
+      name: principal.URI.host,
       learnMoreURL: Services.urlFormatter.formatURLPref("app.support.baseURL") + "fingerprint-permission",
       dismissed: aTopic == this._permissionsPromptHideDoorHanger,
     };
@@ -8090,7 +8056,7 @@ var RestoreLastSessionObserver = {
         !PrivateBrowsingUtils.isWindowPrivate(window)) {
       Services.obs.addObserver(this, "sessionstore-last-session-cleared", true);
       goSetCommandEnabled("Browser:RestoreLastSession", true);
-    } else if (SessionStartup.isAutomaticRestoreEnabled()) {
+    } else if (SessionStore.willAutoRestore) {
       document.getElementById("Browser:RestoreLastSession").setAttribute("hidden", true);
     }
   },
@@ -8423,8 +8389,7 @@ var PanicButtonNotifier = {
       popup.addEventListener("popuphidden", removeListeners);
 
       let widget = CustomizableUI.getWidget("panic-button").forWindow(window);
-      let anchor = widget.anchor;
-      anchor = document.getAnonymousElementByAttribute(anchor, "class", "toolbarbutton-icon");
+      let anchor = widget.anchor.icon;
       popup.openPopup(anchor, popup.getAttribute("position"));
     } catch (ex) {
       Cu.reportError(ex);

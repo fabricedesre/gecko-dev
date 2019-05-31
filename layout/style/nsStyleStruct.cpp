@@ -20,6 +20,7 @@
 #include "nsCSSProps.h"
 #include "nsDeviceContext.h"
 #include "nsStyleUtil.h"
+#include "nsIURIMutator.h"
 
 #include "nsCOMPtr.h"
 
@@ -60,18 +61,6 @@ static constexpr size_t kStyleStructSizeLimit = 504;
 #include "nsStyleStructList.h"
 #undef STYLE_STRUCT
 
-static bool DefinitelyEqualURIs(const css::URLValue* aURI1,
-                                const css::URLValue* aURI2) {
-  return aURI1 == aURI2 ||
-         (aURI1 && aURI2 && aURI1->DefinitelyEqualURIs(*aURI2));
-}
-
-static bool DefinitelyEqualURIsAndPrincipal(const css::URLValue* aURI1,
-                                            const css::URLValue* aURI2) {
-  return aURI1 == aURI2 ||
-         (aURI1 && aURI2 && aURI1->DefinitelyEqualURIsAndPrincipal(*aURI2));
-}
-
 static bool DefinitelyEqualImages(const nsStyleImageRequest* aRequest1,
                                   const nsStyleImageRequest* aRequest2) {
   if (aRequest1 == aRequest2) {
@@ -83,6 +72,73 @@ static bool DefinitelyEqualImages(const nsStyleImageRequest* aRequest1,
   }
 
   return aRequest1->DefinitelyEquals(*aRequest2);
+}
+
+bool StyleCssUrlData::operator==(const StyleCssUrlData& aOther) const {
+  // This very intentionally avoids comparing LoadData and such.
+  const auto& extra = extra_data.get();
+  const auto& otherExtra = aOther.extra_data.get();
+  if (extra.BaseURI() != otherExtra.BaseURI() ||
+      extra.Principal() != otherExtra.Principal() ||
+      cors_mode != aOther.cors_mode) {
+    // NOTE(emilio): This does pointer comparison, but it's what URLValue used
+    // to do. That's ok though since this is only used for style struct diffing.
+    return false;
+  }
+  return serialization == aOther.serialization;
+}
+
+StyleLoadData::~StyleLoadData() {
+  if (load_id != 0) {
+    css::ImageLoader::DeregisterCSSImageFromAllLoaders(*this);
+  }
+}
+
+already_AddRefed<nsIURI> StyleComputedUrl::ResolveLocalRef(nsIURI* aURI) const {
+  nsCOMPtr<nsIURI> result = GetURI();
+  if (result && IsLocalRef()) {
+    nsCString ref;
+    result->GetRef(ref);
+
+    nsresult rv = NS_MutateURI(aURI).SetRef(ref).Finalize(result);
+
+    if (NS_FAILED(rv)) {
+      // If setting the ref failed, just return the original URI.
+      result = aURI;
+    }
+  }
+  return result.forget();
+}
+
+already_AddRefed<nsIURI> StyleComputedUrl::ResolveLocalRef(
+    const nsIContent* aContent) const {
+  nsCOMPtr<nsIURI> url = aContent->GetBaseURI();
+  return ResolveLocalRef(url);
+}
+
+imgRequestProxy* StyleComputedUrl::LoadImage(Document& aDocument) {
+  MOZ_DIAGNOSTIC_ASSERT(NS_IsMainThread());
+
+  static uint64_t sNextLoadID = 1;
+
+  StyleLoadData& data = LoadData();
+  if (data.load_id == 0) {
+    data.load_id = sNextLoadID++;
+  }
+
+  // NB: If aDocument is not the original document, we may not be able to load
+  // images from aDocument.  Instead we do the image load from the original doc
+  // and clone it to aDocument.
+  Document* loadingDoc = aDocument.GetOriginalDocument();
+  if (!loadingDoc) {
+    loadingDoc = &aDocument;
+  }
+
+  // Kick off the load in the loading document.
+  css::ImageLoader::LoadImage(*this, *loadingDoc);
+
+  // Register the image in the document that's using it.
+  return aDocument.StyleImageLoader()->RegisterCSSImage(data);
 }
 
 // --------------------
@@ -273,6 +329,8 @@ static inline BorderRadius ZeroBorderRadius() {
 
 nsStyleBorder::nsStyleBorder(const Document& aDocument)
     : mBorderRadius(ZeroBorderRadius()),
+      mBorderImageWidth(
+          StyleRectWithAllSides(StyleBorderImageSideWidth::Number(1.))),
       mBorderImageOutset(
           StyleRectWithAllSides(StyleNonNegativeLengthOrNumber::Number(0.))),
       mBorderImageSlice(
@@ -292,7 +350,6 @@ nsStyleBorder::nsStyleBorder(const Document& aDocument)
 
   nscoord medium = kMediumBorderWidth;
   NS_FOR_CSS_SIDES(side) {
-    mBorderImageWidth.Set(side, nsStyleCoord(1.0f, eStyleUnit_Factor));
     mBorder.Side(side) = medium;
     mBorderStyle[side] = StyleBorderStyle::None;
   }
@@ -671,6 +728,9 @@ nsChangeHint nsStyleColumn::CalcDifference(
 nsStyleSVG::nsStyleSVG(const Document& aDocument)
     : mFill(eStyleSVGPaintType_Color),  // Will be initialized to NS_RGB(0,0,0)
       mStroke(eStyleSVGPaintType_None),
+      mMarkerEnd(StyleUrlOrNone::None()),
+      mMarkerMid(StyleUrlOrNone::None()),
+      mMarkerStart(StyleUrlOrNone::None()),
       mMozContextProperties{{}, {0}},
       mStrokeDashoffset(LengthPercentage::Zero()),
       mStrokeWidth(LengthPercentage::FromPixels(1.0f)),
@@ -727,16 +787,14 @@ static bool PaintURIChanged(const nsStyleSVGPaint& aPaint1,
            aPaint2.Type() == eStyleSVGPaintType_Server;
   }
   return aPaint1.Type() == eStyleSVGPaintType_Server &&
-         !DefinitelyEqualURIs(aPaint1.GetPaintServer(),
-                              aPaint2.GetPaintServer());
+         aPaint1.GetPaintServer() != aPaint2.GetPaintServer();
 }
 
 nsChangeHint nsStyleSVG::CalcDifference(const nsStyleSVG& aNewData) const {
   nsChangeHint hint = nsChangeHint(0);
 
-  if (!DefinitelyEqualURIs(mMarkerEnd, aNewData.mMarkerEnd) ||
-      !DefinitelyEqualURIs(mMarkerMid, aNewData.mMarkerMid) ||
-      !DefinitelyEqualURIs(mMarkerStart, aNewData.mMarkerStart)) {
+  if (mMarkerEnd != aNewData.mMarkerEnd || mMarkerMid != aNewData.mMarkerMid ||
+      mMarkerStart != aNewData.mMarkerStart) {
     // Markers currently contribute to SVGGeometryFrame::mRect,
     // so we need a reflow as well as a repaint. No intrinsic sizes need
     // to change, so nsChangeHint_NeedReflow is sufficient.
@@ -833,7 +891,6 @@ bool StyleShapeSource::operator==(const StyleShapeSource& aOther) const {
     case StyleShapeSourceType::None:
       return true;
 
-    case StyleShapeSourceType::URL:
     case StyleShapeSourceType::Image:
       return *mShapeImage == *aOther.mShapeImage;
 
@@ -850,16 +907,6 @@ bool StyleShapeSource::operator==(const StyleShapeSource& aOther) const {
 
   MOZ_ASSERT_UNREACHABLE("Unexpected shape source type!");
   return true;
-}
-
-void StyleShapeSource::SetURL(const css::URLValue& aValue) {
-  if (mType != StyleShapeSourceType::Image &&
-      mType != StyleShapeSourceType::URL) {
-    DoDestroy();
-    new (&mShapeImage) UniquePtr<nsStyleImage>(new nsStyleImage());
-  }
-  mShapeImage->SetURLValue(do_AddRef(&aValue));
-  mType = StyleShapeSourceType::URL;
 }
 
 void StyleShapeSource::SetShapeImage(UniquePtr<nsStyleImage> aShapeImage) {
@@ -921,16 +968,13 @@ void StyleShapeSource::DoCopy(const StyleShapeSource& aOther) {
       mType = StyleShapeSourceType::None;
       break;
 
-    case StyleShapeSourceType::URL:
-      SetURL(aOther.URL());
-      break;
-
     case StyleShapeSourceType::Image:
       SetShapeImage(MakeUnique<nsStyleImage>(aOther.ShapeImage()));
       break;
 
     case StyleShapeSourceType::Shape: {
-      UniquePtr<StyleBasicShape> shape(Servo_CloneBasicShape(&aOther.BasicShape()));
+      UniquePtr<StyleBasicShape> shape(
+          Servo_CloneBasicShape(&aOther.BasicShape()));
       // TODO(emilio): This could be a copy-ctor call like above if we teach
       // cbindgen to generate copy-constructors for tagged unions.
       SetBasicShape(std::move(shape), aOther.GetReferenceBox());
@@ -953,7 +997,6 @@ void StyleShapeSource::DoDestroy() {
       mBasicShape.~UniquePtr<StyleBasicShape>();
       break;
     case StyleShapeSourceType::Image:
-    case StyleShapeSourceType::URL:
       mShapeImage.~UniquePtr<nsStyleImage>();
       break;
     case StyleShapeSourceType::Path:
@@ -965,96 +1008,6 @@ void StyleShapeSource::DoDestroy() {
       break;
   }
   mType = StyleShapeSourceType::None;
-}
-
-// --------------------
-// nsStyleFilter
-//
-nsStyleFilter::nsStyleFilter() : mType(NS_STYLE_FILTER_NONE), mURL(nullptr) {
-  MOZ_COUNT_CTOR(nsStyleFilter);
-}
-
-nsStyleFilter::nsStyleFilter(const nsStyleFilter& aSource)
-    : mType(NS_STYLE_FILTER_NONE), mURL(nullptr) {
-  MOZ_COUNT_CTOR(nsStyleFilter);
-  if (aSource.mType == NS_STYLE_FILTER_URL) {
-    SetURL(aSource.mURL);
-  } else if (aSource.mType == NS_STYLE_FILTER_DROP_SHADOW) {
-    SetDropShadow(aSource.mDropShadow);
-  } else if (aSource.mType != NS_STYLE_FILTER_NONE) {
-    SetFilterParameter(aSource.mFilterParameter, aSource.mType);
-  }
-}
-
-nsStyleFilter::~nsStyleFilter() {
-  ReleaseRef();
-  MOZ_COUNT_DTOR(nsStyleFilter);
-}
-
-nsStyleFilter& nsStyleFilter::operator=(const nsStyleFilter& aOther) {
-  if (this == &aOther) {
-    return *this;
-  }
-
-  if (aOther.mType == NS_STYLE_FILTER_URL) {
-    SetURL(aOther.mURL);
-  } else if (aOther.mType == NS_STYLE_FILTER_DROP_SHADOW) {
-    SetDropShadow(aOther.mDropShadow);
-  } else if (aOther.mType != NS_STYLE_FILTER_NONE) {
-    SetFilterParameter(aOther.mFilterParameter, aOther.mType);
-  } else {
-    ReleaseRef();
-    mType = NS_STYLE_FILTER_NONE;
-  }
-
-  return *this;
-}
-
-bool nsStyleFilter::operator==(const nsStyleFilter& aOther) const {
-  if (mType != aOther.mType) {
-    return false;
-  }
-
-  if (mType == NS_STYLE_FILTER_URL) {
-    return DefinitelyEqualURIs(mURL, aOther.mURL);
-  } else if (mType == NS_STYLE_FILTER_DROP_SHADOW) {
-    return mDropShadow == aOther.mDropShadow;
-  } else if (mType != NS_STYLE_FILTER_NONE) {
-    return mFilterParameter == aOther.mFilterParameter;
-  }
-
-  return true;
-}
-
-void nsStyleFilter::ReleaseRef() {
-  if (mType == NS_STYLE_FILTER_DROP_SHADOW) {
-    mDropShadow.~StyleSimpleShadow();
-  } else if (mType == NS_STYLE_FILTER_URL) {
-    NS_ASSERTION(mURL, "expected pointer");
-    mURL->Release();
-  }
-  mURL = nullptr;
-}
-
-void nsStyleFilter::SetFilterParameter(const nsStyleCoord& aFilterParameter,
-                                       int32_t aType) {
-  ReleaseRef();
-  mFilterParameter = aFilterParameter;
-  mType = aType;
-}
-
-bool nsStyleFilter::SetURL(css::URLValue* aURL) {
-  ReleaseRef();
-  mURL = aURL;
-  mURL->AddRef();
-  mType = NS_STYLE_FILTER_URL;
-  return true;
-}
-
-void nsStyleFilter::SetDropShadow(const StyleSimpleShadow& aSrc) {
-  ReleaseRef();
-  new (&mDropShadow) StyleSimpleShadow(aSrc);
-  mType = NS_STYLE_FILTER_DROP_SHADOW;
 }
 
 // --------------------
@@ -1106,6 +1059,7 @@ nsStyleSVGReset::nsStyleSVGReset(const nsStyleSVGReset& aSource)
 void nsStyleSVGReset::TriggerImageLoads(Document& aDocument,
                                         const nsStyleSVGReset* aOldStyle) {
   MOZ_ASSERT(NS_IsMainThread());
+  // NOTE(emilio): we intentionally don't call TriggerImageLoads for clip-path.
 
   NS_FOR_VISIBLE_IMAGE_LAYERS_BACK_TO_FRONT(i, mMask) {
     nsStyleImage& image = mMask.mLayers[i].mImage;
@@ -1215,8 +1169,7 @@ void nsStyleSVGPaint::Reset() {
       mPaint.mColor = StyleColor::Black();
       break;
     case eStyleSVGPaintType_Server:
-      mPaint.mPaintServer->Release();
-      mPaint.mPaintServer = nullptr;
+      mPaint.mPaintServer.~StyleComputedUrl();
       MOZ_FALLTHROUGH;
     case eStyleSVGPaintType_ContextFill:
     case eStyleSVGPaintType_ContextStroke:
@@ -1279,14 +1232,12 @@ void nsStyleSVGPaint::SetColor(StyleColor aColor) {
   mPaint.mColor = aColor;
 }
 
-void nsStyleSVGPaint::SetPaintServer(css::URLValue* aPaintServer,
+void nsStyleSVGPaint::SetPaintServer(const StyleComputedUrl& aPaintServer,
                                      nsStyleSVGFallbackType aFallbackType,
                                      StyleColor aFallbackColor) {
-  MOZ_ASSERT(aPaintServer);
   Reset();
   mType = eStyleSVGPaintType_Server;
-  mPaint.mPaintServer = aPaintServer;
-  mPaint.mPaintServer->AddRef();
+  new (&mPaint.mPaintServer) StyleComputedUrl(aPaintServer);
   mFallbackType = aFallbackType;
   mFallbackColor = aFallbackColor;
 }
@@ -1299,8 +1250,7 @@ bool nsStyleSVGPaint::operator==(const nsStyleSVGPaint& aOther) const {
     case eStyleSVGPaintType_Color:
       return mPaint.mColor == aOther.mPaint.mColor;
     case eStyleSVGPaintType_Server:
-      return DefinitelyEqualURIs(mPaint.mPaintServer,
-                                 aOther.mPaint.mPaintServer) &&
+      return mPaint.mPaintServer == aOther.mPaint.mPaintServer &&
              mFallbackType == aOther.mFallbackType &&
              mFallbackColor == aOther.mFallbackColor;
     case eStyleSVGPaintType_ContextFill:
@@ -1821,8 +1771,8 @@ class StyleImageRequestCleanupTask : public mozilla::Runnable {
 };
 
 nsStyleImageRequest::nsStyleImageRequest(Mode aModeFlags,
-                                         css::URLValue* aImageValue)
-    : mImageValue(aImageValue), mModeFlags(aModeFlags), mResolved(false) {}
+                                         const StyleComputedImageUrl& aImageURL)
+    : mImageURL(aImageURL), mModeFlags(aModeFlags), mResolved(false) {}
 
 nsStyleImageRequest::~nsStyleImageRequest() {
   // We may or may not be being destroyed on the main thread.  To clean
@@ -1856,7 +1806,7 @@ bool nsStyleImageRequest::Resolve(Document& aDocument,
   mResolved = true;
 
   nsIURI* docURI = aDocument.GetDocumentURI();
-  if (GetImageValue()->HasRef()) {
+  if (GetImageValue().HasRef()) {
     bool isEqualExceptRef = false;
     RefPtr<nsIURI> imageURI = GetImageURI();
     if (!imageURI) {
@@ -1883,11 +1833,12 @@ bool nsStyleImageRequest::Resolve(Document& aDocument,
     MOZ_ASSERT(mModeFlags == aOldImageRequest->mModeFlags);
 
     mDocGroup = aOldImageRequest->mDocGroup;
-    mImageValue = aOldImageRequest->mImageValue;
+    mImageURL = aOldImageRequest->mImageURL;
+
     mRequestProxy = aOldImageRequest->mRequestProxy;
   } else {
     mDocGroup = aDocument.GetDocGroup();
-    imgRequestProxy* request = mImageValue->LoadImage(&aDocument);
+    imgRequestProxy* request = mImageURL.LoadImage(aDocument);
     bool isPrint = !!aDocument.GetOriginalDocument();
     if (!isPrint) {
       mRequestProxy = request;
@@ -1929,7 +1880,7 @@ void nsStyleImageRequest::MaybeTrackAndLock() {
 
 bool nsStyleImageRequest::DefinitelyEquals(
     const nsStyleImageRequest& aOther) const {
-  return DefinitelyEqualURIs(mImageValue, aOther.mImageValue);
+  return mImageURL == aOther.mImageURL;
 }
 
 // --------------------
@@ -2019,8 +1970,6 @@ void nsStyleImage::DoCopy(const nsStyleImage& aOther) {
     SetGradientData(aOther.mGradient);
   } else if (aOther.mType == eStyleImageType_Element) {
     SetElementId(do_AddRef(aOther.mElementId));
-  } else if (aOther.mType == eStyleImageType_URL) {
-    SetURLValue(do_AddRef(aOther.mURLValue));
   }
 
   UniquePtr<nsStyleSides> cropRectCopy;
@@ -2037,10 +1986,6 @@ void nsStyleImage::SetNull() {
     NS_RELEASE(mImage);
   } else if (mType == eStyleImageType_Element) {
     NS_RELEASE(mElementId);
-  } else if (mType == eStyleImageType_URL) {
-    // FIXME: NS_RELEASE doesn't handle const gracefully (unlike RefPtr).
-    const_cast<css::URLValue*>(mURLValue)->Release();
-    mURLValue = nullptr;
   }
 
   mType = eStyleImageType_Null;
@@ -2094,19 +2039,6 @@ void nsStyleImage::SetCropRect(UniquePtr<nsStyleSides> aCropRect) {
   mCropRect = std::move(aCropRect);
 }
 
-void nsStyleImage::SetURLValue(already_AddRefed<const URLValue> aValue) {
-  RefPtr<const URLValue> value = aValue;
-
-  if (mType != eStyleImageType_Null) {
-    SetNull();
-  }
-
-  if (value) {
-    mURLValue = value.forget().take();
-    mType = eStyleImageType_URL;
-  }
-}
-
 static int32_t ConvertToPixelCoord(const nsStyleCoord& aCoord,
                                    int32_t aPercentScale) {
   double pixelValue;
@@ -2137,12 +2069,8 @@ already_AddRefed<nsIURI> nsStyleImageRequest::GetImageURI() const {
   }
 
   // If we had some problem resolving the mRequestProxy, use the URL stored
-  // in the mImageValue.
-  if (!mImageValue) {
-    return nullptr;
-  }
-
-  uri = mImageValue->GetURI();
+  // in the mImageURL.
+  uri = mImageURL.GetURI();
   return uri.forget();
 }
 
@@ -2209,7 +2137,7 @@ bool nsStyleImage::IsOpaque() const {
     return mGradient->IsOpaque();
   }
 
-  if (mType == eStyleImageType_Element || mType == eStyleImageType_URL) {
+  if (mType == eStyleImageType_Element) {
     return false;
   }
 
@@ -2241,7 +2169,6 @@ bool nsStyleImage::IsComplete() const {
       return false;
     case eStyleImageType_Gradient:
     case eStyleImageType_Element:
-    case eStyleImageType_URL:
       return true;
     case eStyleImageType_Image: {
       if (!IsResolved()) {
@@ -2268,7 +2195,6 @@ bool nsStyleImage::IsLoaded() const {
       return false;
     case eStyleImageType_Gradient:
     case eStyleImageType_Element:
-    case eStyleImageType_URL:
       return true;
     case eStyleImageType_Image: {
       imgRequestProxy* req = GetImageData();
@@ -2313,10 +2239,6 @@ bool nsStyleImage::operator==(const nsStyleImage& aOther) const {
     return mElementId == aOther.mElementId;
   }
 
-  if (mType == eStyleImageType_URL) {
-    return DefinitelyEqualURIs(mURLValue, aOther.mURLValue);
-  }
-
   return true;
 }
 
@@ -2347,15 +2269,8 @@ already_AddRefed<nsIURI> nsStyleImage::GetImageURI() const {
   return uri.forget();
 }
 
-const css::URLValue* nsStyleImage::GetURLValue() const {
-  if (mType == eStyleImageType_Image) {
-    return mImage->GetImageValue();
-  }
-  if (mType == eStyleImageType_URL) {
-    return mURLValue;
-  }
-
-  return nullptr;
+const StyleComputedImageUrl* nsStyleImage::GetURLValue() const {
+  return mType == eStyleImageType_Image ? &mImage->GetImageValue() : nullptr;
 }
 
 // --------------------
@@ -2459,7 +2374,6 @@ static bool AnyLayerIsElementImage(const nsStyleImageLayers& aLayers) {
 
 nsChangeHint nsStyleImageLayers::CalcDifference(
     const nsStyleImageLayers& aNewLayers, LayerType aType) const {
-
   nsChangeHint hint = nsChangeHint(0);
 
   // If the number of visible images changes, then it's easy-peasy.
@@ -2486,8 +2400,8 @@ nsChangeHint nsStyleImageLayers::CalcDifference(
           moreLayersLayer.CalcDifference(lessLayersLayer);
       if (layerDifference && (IsElementImage(moreLayersLayer) ||
                               IsElementImage(lessLayersLayer))) {
-        layerDifference |= nsChangeHint_UpdateEffects |
-                           nsChangeHint_RepaintFrame;
+        layerDifference |=
+            nsChangeHint_UpdateEffects | nsChangeHint_RepaintFrame;
       }
       hint |= layerDifference;
       continue;
@@ -2619,8 +2533,6 @@ bool nsStyleImageLayers::operator==(const nsStyleImageLayers& aOther) const {
 
   for (uint32_t i = 0; i < mLayers.Length(); i++) {
     if (mLayers[i].mPosition != aOther.mLayers[i].mPosition ||
-        !DefinitelyEqualURIs(mLayers[i].mImage.GetURLValue(),
-                             aOther.mLayers[i].mImage.GetURLValue()) ||
         mLayers[i].mImage != aOther.mLayers[i].mImage ||
         mLayers[i].mSize != aOther.mLayers[i].mSize ||
         mLayers[i].mClip != aOther.mLayers[i].mClip ||
@@ -2813,11 +2725,17 @@ void nsStyleImageLayers::FillAllLayers(uint32_t aMaxItemCount) {
   FillImageLayerList(mLayers, &Layer::mComposite, mCompositeCount, fillCount);
 }
 
+static bool UrlValuesEqual(const nsStyleImage& aImage,
+                           const nsStyleImage& aOtherImage) {
+  auto* url = aImage.GetURLValue();
+  auto* other = aOtherImage.GetURLValue();
+  return url == other || (url && other && *url == *other);
+}
+
 nsChangeHint nsStyleImageLayers::Layer::CalcDifference(
     const nsStyleImageLayers::Layer& aNewLayer) const {
   nsChangeHint hint = nsChangeHint(0);
-  if (!DefinitelyEqualURIs(mImage.GetURLValue(),
-                           aNewLayer.mImage.GetURLValue())) {
+  if (!UrlValuesEqual(mImage, aNewLayer.mImage)) {
     hint |= nsChangeHint_RepaintFrame | nsChangeHint_UpdateEffects;
   } else if (mAttachment != aNewLayer.mAttachment || mClip != aNewLayer.mClip ||
              mOrigin != aNewLayer.mOrigin || mRepeat != aNewLayer.mRepeat ||
@@ -2953,7 +2871,8 @@ bool StyleAnimation::operator==(const StyleAnimation& aOther) const {
 // nsStyleDisplay
 //
 nsStyleDisplay::nsStyleDisplay(const Document& aDocument)
-    : mTransitions(
+    : mBinding(StyleUrlOrNone::None()),
+      mTransitions(
           nsStyleAutoArray<StyleTransition>::WITH_SINGLE_INITIAL_ELEMENT),
       mTransitionTimingFunctionCount(1),
       mTransitionDurationCount(1),
@@ -2997,15 +2916,12 @@ nsStyleDisplay::nsStyleDisplay(const Document& aDocument)
       mScrollSnapType(
           {StyleScrollSnapAxis::Both, StyleScrollSnapStrictness::None}),
       mLineClamp(0),
-      mScrollSnapPointsX(eStyleUnit_None),
-      mScrollSnapPointsY(eStyleUnit_None),
-      mScrollSnapDestination(
-          {LengthPercentage::Zero(), LengthPercentage::Zero()}),
       mBackfaceVisibility(NS_STYLE_BACKFACE_VISIBILITY_VISIBLE),
       mTransformStyle(NS_STYLE_TRANSFORM_STYLE_FLAT),
       mTransformBox(StyleGeometryBox::BorderBox),
       mOffsetPath(StyleOffsetPath::None()),
       mOffsetDistance(LengthPercentage::Zero()),
+      mOffsetRotate{true, StyleAngle{0.0}},
       mTransformOrigin{LengthPercentage::FromPercentage(0.5),
                        LengthPercentage::FromPercentage(0.5),
                        {0.}},
@@ -3062,10 +2978,6 @@ nsStyleDisplay::nsStyleDisplay(const nsStyleDisplay& aSource)
       mOverscrollBehaviorY(aSource.mOverscrollBehaviorY),
       mScrollSnapType(aSource.mScrollSnapType),
       mLineClamp(aSource.mLineClamp),
-      mScrollSnapPointsX(aSource.mScrollSnapPointsX),
-      mScrollSnapPointsY(aSource.mScrollSnapPointsY),
-      mScrollSnapDestination(aSource.mScrollSnapDestination),
-      mScrollSnapCoordinate(aSource.mScrollSnapCoordinate),
       mTransform(aSource.mTransform),
       mRotate(aSource.mRotate),
       mTranslate(aSource.mTranslate),
@@ -3075,6 +2987,7 @@ nsStyleDisplay::nsStyleDisplay(const nsStyleDisplay& aSource)
       mTransformBox(aSource.mTransformBox),
       mOffsetPath(aSource.mOffsetPath),
       mOffsetDistance(aSource.mOffsetDistance),
+      mOffsetRotate(aSource.mOffsetRotate),
       mTransformOrigin(aSource.mTransformOrigin),
       mChildPerspective(aSource.mChildPerspective),
       mPerspectiveOrigin(aSource.mPerspectiveOrigin),
@@ -3085,9 +2998,7 @@ nsStyleDisplay::nsStyleDisplay(const nsStyleDisplay& aSource)
   MOZ_COUNT_CTOR(nsStyleDisplay);
 }
 
-nsStyleDisplay::~nsStyleDisplay() {
-  MOZ_COUNT_DTOR(nsStyleDisplay);
-}
+nsStyleDisplay::~nsStyleDisplay() { MOZ_COUNT_DTOR(nsStyleDisplay); }
 
 void nsStyleDisplay::TriggerImageLoads(Document& aDocument,
                                        const nsStyleDisplay* aOldStyle) {
@@ -3117,15 +3028,14 @@ static inline nsChangeHint CompareTransformValues(
 }
 
 static inline nsChangeHint CompareMotionValues(
-    const StyleOffsetPath& aOffsetPath, const LengthPercentage& aOffsetDistance,
-    const StyleOffsetPath& aNewOffsetPath,
-    const LengthPercentage& aNewOffsetDistance) {
-  if (aOffsetPath == aNewOffsetPath) {
-    if (aOffsetDistance == aNewOffsetDistance) {
+    const nsStyleDisplay& aDisplay, const nsStyleDisplay& aNewDisplay) {
+  if (aDisplay.mOffsetPath == aNewDisplay.mOffsetPath) {
+    if (aDisplay.mOffsetDistance == aNewDisplay.mOffsetDistance &&
+        aDisplay.mOffsetRotate == aNewDisplay.mOffsetRotate) {
       return nsChangeHint(0);
     }
 
-    if (aOffsetPath.IsNone()) {
+    if (aDisplay.mOffsetPath.IsNone()) {
       return nsChangeHint_NeutralChange;
     }
   }
@@ -3135,7 +3045,7 @@ static inline nsChangeHint CompareMotionValues(
   // Set the same hints as what we use for transform because motion path is
   // a kind of transform and will be combined with other transforms.
   nsChangeHint result = nsChangeHint_UpdateTransformLayer;
-  if (!aOffsetPath.IsNone() && !aNewOffsetPath.IsNone()) {
+  if (!aDisplay.mOffsetPath.IsNone() && !aNewDisplay.mOffsetPath.IsNone()) {
     result |= nsChangeHint_UpdatePostTransformOverflow;
   } else {
     result |= nsChangeHint_UpdateOverflow;
@@ -3147,15 +3057,11 @@ nsChangeHint nsStyleDisplay::CalcDifference(
     const nsStyleDisplay& aNewData) const {
   nsChangeHint hint = nsChangeHint(0);
 
-  if (!DefinitelyEqualURIsAndPrincipal(mBinding, aNewData.mBinding) ||
-      mPosition != aNewData.mPosition || mDisplay != aNewData.mDisplay ||
-      mContain != aNewData.mContain ||
+  if (mBinding != aNewData.mBinding || mPosition != aNewData.mPosition ||
+      mDisplay != aNewData.mDisplay || mContain != aNewData.mContain ||
       (mFloat == StyleFloat::None) != (aNewData.mFloat == StyleFloat::None) ||
       mScrollBehavior != aNewData.mScrollBehavior ||
       mScrollSnapType != aNewData.mScrollSnapType ||
-      mScrollSnapPointsX != aNewData.mScrollSnapPointsX ||
-      mScrollSnapPointsY != aNewData.mScrollSnapPointsY ||
-      mScrollSnapDestination != aNewData.mScrollSnapDestination ||
       mTopLayer != aNewData.mTopLayer || mResize != aNewData.mResize) {
     return nsChangeHint_ReconstructFrame;
   }
@@ -3182,16 +3088,17 @@ nsChangeHint nsStyleDisplay::CalcDifference(
     hint |= nsChangeHint_ScrollbarChange;
   }
 
-  /* Note: When mScrollBehavior, mScrollSnapTypeX, mScrollSnapTypeY,
-   * mScrollSnapPointsX, mScrollSnapPointsY, or mScrollSnapDestination are
-   * changed, nsChangeHint_NeutralChange is not sufficient to enter
-   * nsCSSFrameConstructor::PropagateScrollToViewport. By using the same hint
-   * as used when the overflow css property changes,
-   * nsChangeHint_ReconstructFrame, PropagateScrollToViewport will be called.
+  /* Note: When mScrollBehavior or mScrollSnapType are changed,
+   * nsChangeHint_NeutralChange is not sufficient to enter
+   * nsCSSFrameConstructor::PropagateScrollToViewport. By using the same hint as
+   * used when the overflow css property changes, nsChangeHint_ReconstructFrame,
+   * PropagateScrollToViewport will be called.
    *
    * The scroll-behavior css property is not expected to change often (the
    * CSSOM-View DOM methods are likely to be used in those cases); however,
    * if this does become common perhaps a faster-path might be worth while.
+   *
+   * FIXME(emilio): Can we do what we do for overflow changes?
    */
 
   if (mFloat != aNewData.mFloat) {
@@ -3266,9 +3173,7 @@ nsChangeHint nsStyleDisplay::CalcDifference(
     transformHint |= CompareTransformValues(mRotate, aNewData.mRotate);
     transformHint |= CompareTransformValues(mTranslate, aNewData.mTranslate);
     transformHint |= CompareTransformValues(mScale, aNewData.mScale);
-    transformHint |=
-        CompareMotionValues(mOffsetPath, mOffsetDistance, aNewData.mOffsetPath,
-                            aNewData.mOffsetDistance);
+    transformHint |= CompareMotionValues(*this, aNewData);
 
     if (mTransformOrigin != aNewData.mTransformOrigin) {
       transformHint |= nsChangeHint_UpdateTransformLayer |
@@ -3372,7 +3277,6 @@ nsChangeHint nsStyleDisplay::CalcDifference(
                 mAnimationPlayStateCount != aNewData.mAnimationPlayStateCount ||
                 mAnimationIterationCountCount !=
                     aNewData.mAnimationIterationCountCount ||
-                mScrollSnapCoordinate != aNewData.mScrollSnapCoordinate ||
                 mWillChange != aNewData.mWillChange ||
                 mOverflowAnchor != aNewData.mOverflowAnchor)) {
     hint |= nsChangeHint_NeutralChange;
@@ -3966,9 +3870,7 @@ nsStyleUIReset::nsStyleUIReset(const nsStyleUIReset& aSource)
   MOZ_COUNT_CTOR(nsStyleUIReset);
 }
 
-nsStyleUIReset::~nsStyleUIReset() {
-  MOZ_COUNT_DTOR(nsStyleUIReset);
-}
+nsStyleUIReset::~nsStyleUIReset() { MOZ_COUNT_DTOR(nsStyleUIReset); }
 
 nsChangeHint nsStyleUIReset::CalcDifference(
     const nsStyleUIReset& aNewData) const {

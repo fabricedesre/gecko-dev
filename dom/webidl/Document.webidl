@@ -15,6 +15,7 @@
  * https://wicg.github.io/feature-policy/#policy
  */
 
+interface ContentSecurityPolicy;
 interface Principal;
 interface WindowProxy;
 interface nsISupports;
@@ -116,7 +117,7 @@ interface Document : Node {
 // https://html.spec.whatwg.org/multipage/dom.html#the-document-object
 partial interface Document {
   [PutForwards=href, Unforgeable] readonly attribute Location? location;
-  //(HTML only)         attribute DOMString domain;
+  [SetterThrows]                           attribute DOMString domain;
   readonly attribute DOMString referrer;
   [Throws] attribute DOMString cookie;
   readonly attribute DOMString lastModified;
@@ -143,11 +144,16 @@ partial interface Document {
   //(Not implemented)readonly attribute DOMElementMap cssElementMap;
 
   // dynamic markup insertion
-  //(HTML only)Document open(optional DOMString type, optional DOMString replace);
-  //(HTML only)WindowProxy open(DOMString url, DOMString name, DOMString features, optional boolean replace);
-  //(HTML only)void close();
-  //(HTML only)void write(DOMString... text);
-  //(HTML only)void writeln(DOMString... text);
+  [CEReactions, Throws]
+  Document open(optional DOMString type, optional DOMString replace = ""); // type is ignored
+  [CEReactions, Throws]
+  WindowProxy? open(DOMString url, DOMString name, DOMString features, optional boolean replace = false);
+  [CEReactions, Throws]
+  void close();
+  [CEReactions, Throws]
+  void write(DOMString... text);
+  [CEReactions, Throws]
+  void writeln(DOMString... text);
 
   // user interaction
   [Pure]
@@ -291,6 +297,11 @@ partial interface Document {
   // Event handlers
   attribute EventHandler onpointerlockchange;
   attribute EventHandler onpointerlockerror;
+};
+
+partial interface Document {
+  [Func="Document::CallerIsTrustedAboutCertError", Throws]
+  FailedCertSecurityInfo getFailedCertSecurityInfo();
 };
 
 // https://w3c.github.io/page-visibility/#extensions-to-the-document-interface
@@ -542,6 +553,14 @@ partial interface Document {
 partial interface Document {
   [Func="IsChromeOrXBL"] readonly attribute boolean hasScriptsBlockedBySandbox;
   [Func="IsChromeOrXBL"] readonly attribute boolean inlineScriptAllowedByCSP;
+};
+
+// Allows frontend code to query a CSP which needs to be passed for a
+// new load into docshell. Further, allows to query the CSP in JSON
+// format for testing purposes.
+partial interface Document {
+  [ChromeOnly] readonly attribute ContentSecurityPolicy? csp;
+  [ChromeOnly] readonly attribute DOMString cspJSON;
 };
 
 // For more information on Flash classification, see

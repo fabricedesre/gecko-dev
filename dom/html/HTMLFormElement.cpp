@@ -356,7 +356,7 @@ static void CollectOrphans(nsINode* aRemovalRoot,
   }
 }
 
-void HTMLFormElement::UnbindFromTree(bool aDeep, bool aNullParent) {
+void HTMLFormElement::UnbindFromTree(bool aNullParent) {
   // Note, this is explicitly using uncomposed doc, since we count
   // only forms in document.
   nsCOMPtr<nsIHTMLDocument> oldDocument = do_QueryInterface(GetUncomposedDoc());
@@ -366,7 +366,7 @@ void HTMLFormElement::UnbindFromTree(bool aDeep, bool aNullParent) {
   MarkOrphans(mControls->mNotInElements);
   MarkOrphans(mImageElements);
 
-  nsGenericHTMLElement::UnbindFromTree(aDeep, aNullParent);
+  nsGenericHTMLElement::UnbindFromTree(aNullParent);
 
   nsINode* ancestor = this;
   nsINode* cur;
@@ -405,7 +405,10 @@ void HTMLFormElement::UnbindFromTree(bool aDeep, bool aNullParent) {
 
 void HTMLFormElement::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
   aVisitor.mWantsWillHandleEvent = true;
-  if (aVisitor.mEvent->mOriginalTarget == static_cast<nsIContent*>(this)) {
+  // According to the UI events spec section "Trusted events", we shouldn't
+  // trigger UA default action with an untrusted event except click.
+  if (aVisitor.mEvent->mOriginalTarget == static_cast<nsIContent*>(this) &&
+      aVisitor.mEvent->IsTrusted()) {
     uint32_t msg = aVisitor.mEvent->mMessage;
     if (msg == eFormSubmit) {
       if (mGeneratingSubmit) {
@@ -442,7 +445,10 @@ void HTMLFormElement::WillHandleEvent(EventChainPostVisitor& aVisitor) {
 }
 
 nsresult HTMLFormElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
-  if (aVisitor.mEvent->mOriginalTarget == static_cast<nsIContent*>(this)) {
+  // According to the UI events spec section "Trusted events", we shouldn't
+  // trigger UA default action with an untrusted event except click.
+  if (aVisitor.mEvent->mOriginalTarget == static_cast<nsIContent*>(this) &&
+      aVisitor.mEvent->IsTrusted()) {
     EventMessage msg = aVisitor.mEvent->mMessage;
     if (msg == eFormSubmit) {
       // let the form know not to defer subsequent submissions
@@ -689,10 +695,10 @@ nsresult HTMLFormElement::SubmitSubmission(
   nsCOMPtr<nsIDocShell> docShell;
 
   {
-    nsAutoPopupStatePusher popupStatePusher(mSubmitPopupState);
+    AutoPopupStatePusher popupStatePusher(mSubmitPopupState);
 
     AutoHandlingUserInputStatePusher userInpStatePusher(
-        aFormSubmission->IsInitiatedFromUserInput(), nullptr, doc);
+        aFormSubmission->IsInitiatedFromUserInput());
 
     nsCOMPtr<nsIInputStream> postDataStream;
     rv = aFormSubmission->GetEncodedSubmission(

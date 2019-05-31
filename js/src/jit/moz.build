@@ -69,6 +69,7 @@ UNIFIED_SOURCES += [
     'JitcodeMap.cpp',
     'JitFrames.cpp',
     'JitOptions.cpp',
+    'JitScript.cpp',
     'JitSpewer.cpp',
     'JSJitFrameIter.cpp',
     'JSONSpewer.cpp',

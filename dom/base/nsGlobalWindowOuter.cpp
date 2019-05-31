@@ -1548,7 +1548,8 @@ bool nsGlobalWindowOuter::WouldReuseInnerWindow(Document* aNewDocument) {
   return false;
 }
 
-void nsGlobalWindowOuter::SetInitialPrincipalToSubject() {
+void nsGlobalWindowOuter::SetInitialPrincipalToSubject(
+    nsIContentSecurityPolicy* aCSP) {
   // First, grab the subject principal.
   nsCOMPtr<nsIPrincipal> newWindowPrincipal =
       nsContentUtils::SubjectPrincipalOrSystemIfNativeCaller();
@@ -1581,7 +1582,7 @@ void nsGlobalWindowOuter::SetInitialPrincipalToSubject() {
 #endif
   }
 
-  GetDocShell()->CreateAboutBlankContentViewer(newWindowPrincipal);
+  GetDocShell()->CreateAboutBlankContentViewer(newWindowPrincipal, aCSP);
 
   if (mDoc) {
     mDoc->SetIsInitialDocument(true);
@@ -2293,8 +2294,7 @@ nsresult nsGlobalWindowOuter::SetNewDocument(Document* aDocument,
   mHasStorageAccess = false;
   nsIURI* uri = aDocument->GetDocumentURI();
   if (newInnerWindow &&
-      aDocument->CookieSettings()->GetCookieBehavior() ==
-          nsICookieService::BEHAVIOR_REJECT_TRACKER &&
+      aDocument->CookieSettings()->GetRejectThirdPartyTrackers() &&
       nsContentUtils::IsThirdPartyWindowOrChannel(newInnerWindow, nullptr,
                                                   uri) &&
       nsContentUtils::IsTrackingResourceWindow(newInnerWindow)) {
@@ -2659,7 +2659,7 @@ bool nsGlobalWindowOuter::ConfirmDialogIfNeeded() {
   // Reset popup state while opening a modal dialog, and firing events
   // about the dialog, to prevent the current state from being active
   // the whole time a modal dialog is open.
-  nsAutoPopupStatePusher popupStatePusher(PopupBlocker::openAbused, true);
+  AutoPopupStatePusher popupStatePusher(PopupBlocker::openAbused, true);
 
   bool disableDialog = false;
   nsAutoString label, title;
@@ -2885,6 +2885,9 @@ void nsPIDOMWindowOuter::SetAudioMuted(bool aMuted) {
     return;
   }
 
+  MOZ_LOG(AudioChannelService::GetAudioChannelLog(), LogLevel::Debug,
+          ("nsPIDOMWindowOuter %p, SetAudioMuted=%s", this,
+           aMuted ? "muted" : "unmuted"));
   mAudioMuted = aMuted;
   RefreshMediaElementsVolume();
 }
@@ -3520,7 +3523,8 @@ void nsGlobalWindowOuter::SetInnerHeightOuter(int32_t aInnerHeight,
 
 nsIntSize nsGlobalWindowOuter::GetOuterSize(CallerType aCallerType,
                                             ErrorResult& aError) {
-  if (nsContentUtils::ResistFingerprinting(aCallerType)) {
+  if (nsContentUtils::ResistFingerprinting(aCallerType) ||
+      (mDoc && mDoc->InRDMPane())) {
     CSSIntSize size;
     aError = GetInnerSize(size);
     return nsIntSize(size.width, size.height);
@@ -4698,7 +4702,7 @@ bool nsGlobalWindowOuter::AlertOrConfirm(bool aAlert, const nsAString& aMessage,
   // Reset popup state while opening a modal dialog, and firing events
   // about the dialog, to prevent the current state from being active
   // the whole time a modal dialog is open.
-  nsAutoPopupStatePusher popupStatePusher(PopupBlocker::openAbused, true);
+  AutoPopupStatePusher popupStatePusher(PopupBlocker::openAbused, true);
 
   // Before bringing up the window, unsuppress painting and flush
   // pending reflows.
@@ -4786,7 +4790,7 @@ void nsGlobalWindowOuter::PromptOuter(const nsAString& aMessage,
   // Reset popup state while opening a modal dialog, and firing events
   // about the dialog, to prevent the current state from being active
   // the whole time a modal dialog is open.
-  nsAutoPopupStatePusher popupStatePusher(PopupBlocker::openAbused, true);
+  AutoPopupStatePusher popupStatePusher(PopupBlocker::openAbused, true);
 
   // Before bringing up the window, unsuppress painting and flush
   // pending reflows.
@@ -4862,14 +4866,7 @@ void nsGlobalWindowOuter::FocusOuter() {
   }
 
   nsCOMPtr<nsIBaseWindow> baseWin = do_QueryInterface(mDocShell);
-
-  bool isVisible = false;
-  if (baseWin) {
-    baseWin->GetVisibility(&isVisible);
-  }
-
-  if (!isVisible) {
-    // A hidden tab is being focused, ignore this call.
+  if (!baseWin) {
     return;
   }
 
@@ -4928,14 +4925,8 @@ void nsGlobalWindowOuter::FocusOuter() {
       return;
     }
 
-    RefPtr<Element> frame = parentdoc->FindContentForSubDocument(mDoc);
-    if (frame) {
-      uint32_t flags = nsIFocusManager::FLAG_NOSCROLL;
-      if (canFocus) flags |= nsIFocusManager::FLAG_RAISE;
-      DebugOnly<nsresult> rv = fm->SetFocus(frame, flags);
-      MOZ_ASSERT(NS_SUCCEEDED(rv),
-                 "SetFocus only fails if the first argument is null, "
-                 "but we pass an element");
+    if (Element* frame = parentdoc->FindContentForSubDocument(mDoc)) {
+      nsContentUtils::RequestFrameFocus(*frame, canFocus);
     }
     return;
   }
@@ -7204,7 +7195,7 @@ nsresult nsGlobalWindowOuter::OpenInternal(
     // Reset popup state while opening a window to prevent the
     // current state from being active the whole time a modal
     // dialog is open.
-    nsAutoPopupStatePusher popupStatePusher(PopupBlocker::openAbused, true);
+    AutoPopupStatePusher popupStatePusher(PopupBlocker::openAbused, true);
 
     if (!aCalledNoScript) {
       // We asserted at the top of this function that aNavigate is true for

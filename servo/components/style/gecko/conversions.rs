@@ -122,11 +122,11 @@ impl nsStyleImage {
         match image {
             GenericImage::Gradient(boxed_gradient) => self.set_gradient(*boxed_gradient),
             GenericImage::Url(ref url) => unsafe {
-                bindings::Gecko_SetLayerImageImageValue(self, url.url_value_ptr())
+                bindings::Gecko_SetLayerImageImageValue(self, url);
             },
             GenericImage::Rect(ref image_rect) => {
                 unsafe {
-                    bindings::Gecko_SetLayerImageImageValue(self, image_rect.url.url_value_ptr());
+                    bindings::Gecko_SetLayerImageImageValue(self, &image_rect.url);
                     bindings::Gecko_InitializeImageCropRect(self);
 
                     // Set CropRect
@@ -383,7 +383,6 @@ impl nsStyleImage {
                 let atom = bindings::Gecko_GetImageElement(self);
                 Some(GenericImage::Element(Atom::from_raw(atom)))
             },
-            _ => panic!("Unexpected image type"),
         }
     }
 
@@ -535,10 +534,8 @@ pub mod basic_shape {
     use crate::gecko_bindings::structs::{
         StyleGeometryBox, StyleShapeSource, StyleShapeSourceType,
     };
-    use crate::gecko_bindings::sugar::refptr::RefPtr;
     use crate::values::computed::basic_shape::{BasicShape, ClippingShape, FloatAreaShape};
     use crate::values::computed::motion::OffsetPath;
-    use crate::values::computed::url::ComputedUrl;
     use crate::values::generics::basic_shape::{GeometryBox, Path, ShapeBox, ShapeSource};
     use crate::values::specified::SVGPathData;
 
@@ -564,7 +561,7 @@ pub mod basic_shape {
                     };
                     Some(ShapeSource::Shape(shape, reference_box))
                 },
-                StyleShapeSourceType::URL | StyleShapeSourceType::Image => None,
+                StyleShapeSourceType::Image => None,
                 StyleShapeSourceType::Path => {
                     let path = self.to_svg_path().expect("expect an SVGPathData");
                     let fill = unsafe { &*self.__bindgen_anon_1.mSVGPath.as_ref().mPtr }.mFillRule;
@@ -588,15 +585,15 @@ pub mod basic_shape {
     impl<'a> From<&'a StyleShapeSource> for ClippingShape {
         fn from(other: &'a StyleShapeSource) -> Self {
             match other.mType {
-                StyleShapeSourceType::URL => unsafe {
+                StyleShapeSourceType::Image => unsafe {
+                    use crate::values::generics::image::Image as GenericImage;
+
                     let shape_image = &*other.__bindgen_anon_1.mShapeImage.as_ref().mPtr;
-                    let other_url =
-                        RefPtr::new(*shape_image.__bindgen_anon_1.mURLValue.as_ref() as *mut _);
-                    let url = ComputedUrl::from_url_value(other_url);
-                    ShapeSource::ImageOrUrl(url)
-                },
-                StyleShapeSourceType::Image => {
-                    unreachable!("ClippingShape doesn't support Image!");
+                    let image = shape_image.into_image().expect("Cannot convert to Image");
+                    match image {
+                        GenericImage::Url(url) => ShapeSource::ImageOrUrl(url.0),
+                        _ => panic!("ClippingShape doesn't support non-url images"),
+                    }
                 },
                 _ => other
                     .into_shape_source()
@@ -608,9 +605,6 @@ pub mod basic_shape {
     impl<'a> From<&'a StyleShapeSource> for FloatAreaShape {
         fn from(other: &'a StyleShapeSource) -> Self {
             match other.mType {
-                StyleShapeSourceType::URL => {
-                    unreachable!("FloatAreaShape doesn't support URL!");
-                },
                 StyleShapeSourceType::Image => unsafe {
                     let shape_image = &*other.__bindgen_anon_1.mShapeImage.as_ref().mPtr;
                     let image = shape_image.into_image().expect("Cannot convert to Image");
@@ -632,7 +626,6 @@ pub mod basic_shape {
                 StyleShapeSourceType::None => OffsetPath::none(),
                 StyleShapeSourceType::Shape |
                 StyleShapeSourceType::Box |
-                StyleShapeSourceType::URL |
                 StyleShapeSourceType::Image => unreachable!("Unsupported offset-path type"),
             }
         }

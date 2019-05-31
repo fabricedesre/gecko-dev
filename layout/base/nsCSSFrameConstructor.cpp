@@ -726,7 +726,7 @@ class MOZ_STACK_CLASS nsFrameConstructorState {
   // mode).
   bool mCreatingExtraFrames;
 
-  nsCOMArray<nsIContent> mGeneratedTextNodesWithInitializer;
+  nsTArray<RefPtr<nsIContent>> mGeneratedContentWithInitializer;
 
   // Constructor
   // Use the passed-in history state.
@@ -944,10 +944,8 @@ nsFrameConstructorState::nsFrameConstructorState(
 nsFrameConstructorState::~nsFrameConstructorState() {
   MOZ_COUNT_DTOR(nsFrameConstructorState);
   ProcessFrameInsertionsForAllLists();
-  for (int32_t i = mGeneratedTextNodesWithInitializer.Count() - 1; i >= 0;
-       --i) {
-    mGeneratedTextNodesWithInitializer[i]->DeleteProperty(
-        nsGkAtoms::genConInitializerProperty);
+  for (auto& content : Reversed(mGeneratedContentWithInitializer)) {
+    content->DeleteProperty(nsGkAtoms::genConInitializerProperty);
   }
   if (!mPendingBindings.isEmpty()) {
     nsBindingManager* bindingManager =
@@ -1160,9 +1158,8 @@ void nsFrameConstructorState::ConstructBackdropFrameFor(nsIContent* aContent,
 
   RefPtr<ComputedStyle> style =
       mPresShell->StyleSet()->ResolvePseudoElementStyle(
-          aContent->AsElement(), PseudoStyleType::backdrop,
-          /* aParentComputedStyle */ nullptr,
-          /* aPseudoElement */ nullptr);
+          *aContent->AsElement(), PseudoStyleType::backdrop,
+          /* aParentStyle */ nullptr);
   MOZ_ASSERT(style->StyleDisplay()->mTopLayer == NS_STYLE_TOP_LAYER_TOP);
   nsContainerFrame* parentFrame =
       GetGeometricParent(*style->StyleDisplay(), nullptr);
@@ -1543,27 +1540,26 @@ void nsCSSFrameConstructor::NotifyDestroyingFrame(nsIFrame* aFrame) {
 }
 
 struct nsGenConInitializer {
-  nsAutoPtr<nsGenConNode> mNode;
+  UniquePtr<nsGenConNode> mNode;
   nsGenConList* mList;
   void (nsCSSFrameConstructor::*mDirtyAll)();
 
-  nsGenConInitializer(nsGenConNode* aNode, nsGenConList* aList,
+  nsGenConInitializer(UniquePtr<nsGenConNode> aNode, nsGenConList* aList,
                       void (nsCSSFrameConstructor::*aDirtyAll)())
-      : mNode(aNode), mList(aList), mDirtyAll(aDirtyAll) {}
+      : mNode(std::move(aNode)), mList(aList), mDirtyAll(aDirtyAll) {}
 };
 
 already_AddRefed<nsIContent> nsCSSFrameConstructor::CreateGenConTextNode(
     nsFrameConstructorState& aState, const nsString& aString,
-    RefPtr<nsTextNode>* aText, nsGenConInitializer* aInitializer) {
+    UniquePtr<nsGenConInitializer> aInitializer) {
   RefPtr<nsTextNode> content = new nsTextNode(mDocument->NodeInfoManager());
   content->SetText(aString, false);
-  if (aText) {
-    *aText = content;
-  }
   if (aInitializer) {
-    content->SetProperty(nsGkAtoms::genConInitializerProperty, aInitializer,
+    aInitializer->mNode->mText = content;
+    content->SetProperty(nsGkAtoms::genConInitializerProperty,
+                         aInitializer.release(),
                          nsINode::DeleteProperty<nsGenConInitializer>);
-    aState.mGeneratedTextNodesWithInitializer.AppendObject(content);
+    aState.mGeneratedContentWithInitializer.AppendElement(content);
   }
   return content.forget();
 }
@@ -1582,7 +1578,7 @@ already_AddRefed<nsIContent> nsCSSFrameConstructor::CreateGeneratedContent(
 
     case StyleContentType::String:
       return CreateGenConTextNode(aState, nsDependentString(data.GetString()),
-                                  nullptr, nullptr);
+                                  nullptr);
 
     case StyleContentType::Attr: {
       const nsStyleContentAttr* attr = data.GetAttr();
@@ -1610,25 +1606,24 @@ already_AddRefed<nsIContent> nsCSSFrameConstructor::CreateGeneratedContent(
       nsCounterList* counterList =
           mCounterManager.CounterListFor(counters->mIdent);
 
-      nsCounterUseNode* node = new nsCounterUseNode(
+      auto node = MakeUnique<nsCounterUseNode>(
           counters, aContentIndex, type == StyleContentType::Counters);
 
-      nsGenConInitializer* initializer = new nsGenConInitializer(
-          node, counterList, &nsCSSFrameConstructor::CountersDirty);
-      return CreateGenConTextNode(aState, EmptyString(), &node->mText,
-                                  initializer);
+      auto initializer = MakeUnique<nsGenConInitializer>(
+          std::move(node), counterList, &nsCSSFrameConstructor::CountersDirty);
+      return CreateGenConTextNode(aState, EmptyString(),
+                                  std::move(initializer));
     }
 
     case StyleContentType::OpenQuote:
     case StyleContentType::CloseQuote:
     case StyleContentType::NoOpenQuote:
     case StyleContentType::NoCloseQuote: {
-      nsQuoteNode* node = new nsQuoteNode(type, aContentIndex);
-
-      nsGenConInitializer* initializer = new nsGenConInitializer(
-          node, &mQuoteList, &nsCSSFrameConstructor::QuotesDirty);
-      return CreateGenConTextNode(aState, EmptyString(), &node->mText,
-                                  initializer);
+      auto node = MakeUnique<nsQuoteNode>(type, aContentIndex);
+      auto initializer = MakeUnique<nsGenConInitializer>(
+          std::move(node), &mQuoteList, &nsCSSFrameConstructor::QuotesDirty);
+      return CreateGenConTextNode(aState, EmptyString(),
+                                  std::move(initializer));
     }
 
     case StyleContentType::AltContent: {
@@ -1656,7 +1651,7 @@ already_AddRefed<nsIContent> nsCSSFrameConstructor::CreateGeneratedContent(
         nsAutoString temp;
         nsContentUtils::GetLocalizedString(nsContentUtils::eFORMS_PROPERTIES,
                                            "Submit", temp);
-        return CreateGenConTextNode(aState, temp, nullptr, nullptr);
+        return CreateGenConTextNode(aState, temp, nullptr);
       }
 
       break;
@@ -1721,6 +1716,8 @@ void nsCSSFrameConstructor::CreateGeneratedContentItem(
       property = nsGkAtoms::afterPseudoProperty;
       break;
     case PseudoStyleType::marker:
+      // We want to get a marker style even if we match no rules, but we still
+      // want to check the result of GeneratedContentPseudoExists.
       elemName = nsGkAtoms::mozgeneratedcontentmarker;
       property = nsGkAtoms::markerPseudoProperty;
       break;
@@ -2249,7 +2246,7 @@ nsIFrame* nsCSSFrameConstructor::ConstructDocElementFrame(
   // Ensure that our XBL bindings are installed.
   //
   // FIXME(emilio): Can we remove support for bindings on the root?
-  if (display->mBinding) {
+  if (display->mBinding.IsUrl()) {
     // Get the XBL loader.
     nsresult rv;
 
@@ -2258,9 +2255,11 @@ nsIFrame* nsCSSFrameConstructor::ConstructDocElementFrame(
       return nullptr;
     }
 
+    const auto& url = display->mBinding.AsUrl();
+
     RefPtr<nsXBLBinding> binding;
-    rv = xblService->LoadBindings(aDocElement, display->mBinding->GetURI(),
-                                  display->mBinding->ExtraData()->Principal(),
+    rv = xblService->LoadBindings(aDocElement, url.GetURI(),
+                                  url.ExtraData().Principal(),
                                   getter_AddRefs(binding));
     if (NS_FAILED(rv) && rv != NS_ERROR_XBL_BLOCKED) {
       // Binding will load asynchronously.
@@ -3220,12 +3219,11 @@ void nsCSSFrameConstructor::ConstructTextFrame(
         static_cast<nsGenConInitializer*>(
             aContent->UnsetProperty(nsGkAtoms::genConInitializerProperty)));
     if (initializer) {
-      if (initializer->mNode->InitTextFrame(
+      if (initializer->mNode.release()->InitTextFrame(
               initializer->mList,
               FindAncestorWithGeneratedContentPseudo(newFrame), newFrame)) {
         (this->*(initializer->mDirtyAll))();
       }
-      initializer->mNode.forget();
     }
   }
 
@@ -3792,6 +3790,16 @@ void nsCSSFrameConstructor::ConstructFrameFromItemInternal(
                                 columnSpanSiblings);
         }
       }
+    }
+  }
+
+  if (computedStyle->GetPseudoType() == PseudoStyleType::marker &&
+      newFrame->IsBulletFrame()) {
+    MOZ_ASSERT(!computedStyle->StyleContent()->ContentCount());
+    auto* node = new nsCounterUseNode(nsCounterUseNode::ForLegacyBullet);
+    auto* list = mCounterManager.CounterListFor(nsGkAtoms::list_item);
+    if (node->InitBullet(list, newFrame)) {
+      CountersDirty();
     }
   }
 
@@ -5310,8 +5318,9 @@ nsCSSFrameConstructor::LoadXBLBindingIfNeeded(nsIContent& aContent,
   if (!(aFlags & ITEM_ALLOW_XBL_BASE)) {
     return XBLBindingLoadInfo(nullptr);
   }
-  css::URLValue* binding = aStyle.StyleDisplay()->mBinding;
-  if (!binding) {
+
+  const auto& binding = aStyle.StyleDisplay()->mBinding;
+  if (binding.IsNone()) {
     return XBLBindingLoadInfo(nullptr);
   }
 
@@ -5321,11 +5330,10 @@ nsCSSFrameConstructor::LoadXBLBindingIfNeeded(nsIContent& aContent,
   }
 
   auto newPendingBinding = MakeUnique<PendingBinding>();
-
-  nsresult rv =
-      xblService->LoadBindings(aContent.AsElement(), binding->GetURI(),
-                               binding->ExtraData()->Principal(),
-                               getter_AddRefs(newPendingBinding->mBinding));
+  const auto& url = binding.AsUrl();
+  nsresult rv = xblService->LoadBindings(
+      aContent.AsElement(), url.GetURI(), url.ExtraData().Principal(),
+      getter_AddRefs(newPendingBinding->mBinding));
   if (NS_FAILED(rv)) {
     if (rv == NS_ERROR_XBL_BLOCKED) {
       return XBLBindingLoadInfo(nullptr);
@@ -8712,8 +8720,7 @@ already_AddRefed<ComputedStyle> nsCSSFrameConstructor::GetFirstLetterStyle(
     nsIContent* aContent, ComputedStyle* aComputedStyle) {
   if (aContent) {
     return mPresShell->StyleSet()->ResolvePseudoElementStyle(
-        aContent->AsElement(), PseudoStyleType::firstLetter, aComputedStyle,
-        nullptr);
+        *aContent->AsElement(), PseudoStyleType::firstLetter, aComputedStyle);
   }
   return nullptr;
 }
@@ -8722,8 +8729,7 @@ already_AddRefed<ComputedStyle> nsCSSFrameConstructor::GetFirstLineStyle(
     nsIContent* aContent, ComputedStyle* aComputedStyle) {
   if (aContent) {
     return mPresShell->StyleSet()->ResolvePseudoElementStyle(
-        aContent->AsElement(), PseudoStyleType::firstLine, aComputedStyle,
-        nullptr);
+        *aContent->AsElement(), PseudoStyleType::firstLine, aComputedStyle);
   }
   return nullptr;
 }
@@ -9985,35 +9991,24 @@ static int32_t FirstLetterCount(const nsTextFragment* aFragment) {
   return count;
 }
 
-static bool NeedFirstLetterContinuation(nsIContent* aContent) {
-  MOZ_ASSERT(aContent, "null ptr");
-
-  bool result = false;
-  if (aContent) {
-    const nsTextFragment* frag = aContent->GetText();
-    if (frag) {
-      int32_t flc = FirstLetterCount(frag);
-      int32_t tl = frag->GetLength();
-      if (flc < tl) {
-        result = true;
-      }
-    }
-  }
-  return result;
+static bool NeedFirstLetterContinuation(Text* aText) {
+  MOZ_ASSERT(aText, "null ptr");
+  int32_t flc = FirstLetterCount(&aText->TextFragment());
+  int32_t tl = aText->TextDataLength();
+  return flc < tl;
 }
 
-static bool IsFirstLetterContent(nsIContent* aContent) {
-  return aContent->TextLength() && !aContent->TextIsOnlyWhitespace();
+static bool IsFirstLetterContent(Text* aText) {
+  return aText->TextDataLength() && !aText->TextIsOnlyWhitespace();
 }
 
 /**
  * Create a letter frame, only make it a floating frame.
  */
 nsFirstLetterFrame* nsCSSFrameConstructor::CreateFloatingLetterFrame(
-    nsFrameConstructorState& aState, nsIContent* aTextContent,
-    nsIFrame* aTextFrame, nsContainerFrame* aParentFrame,
-    ComputedStyle* aParentComputedStyle, ComputedStyle* aComputedStyle,
-    nsFrameList& aResult) {
+    nsFrameConstructorState& aState, Text* aTextContent, nsIFrame* aTextFrame,
+    nsContainerFrame* aParentFrame, ComputedStyle* aParentComputedStyle,
+    ComputedStyle* aComputedStyle, nsFrameList& aResult) {
   MOZ_ASSERT(aParentComputedStyle);
 
   nsFirstLetterFrame* letterFrame =
@@ -10077,9 +10072,7 @@ nsFirstLetterFrame* nsCSSFrameConstructor::CreateFloatingLetterFrame(
  */
 void nsCSSFrameConstructor::CreateLetterFrame(
     nsContainerFrame* aBlockFrame, nsContainerFrame* aBlockContinuation,
-    nsIContent* aTextContent, nsContainerFrame* aParentFrame,
-    nsFrameList& aResult) {
-  MOZ_ASSERT(aTextContent->IsText(), "aTextContent isn't text");
+    Text* aTextContent, nsContainerFrame* aParentFrame, nsFrameList& aResult) {
   NS_ASSERTION(aBlockFrame->IsBlockFrameOrSubclass(), "Not a block frame?");
 
   // Get a ComputedStyle for the first-letter-frame.
@@ -10213,7 +10206,7 @@ void nsCSSFrameConstructor::WrapFramesInFirstLetterFrame(
     LayoutFrameType frameType = frame->Type();
     if (LayoutFrameType::Text == frameType) {
       // Wrap up first-letter content in a letter frame
-      nsIContent* textContent = frame->GetContent();
+      Text* textContent = frame->GetContent()->AsText();
       if (IsFirstLetterContent(textContent)) {
         // Create letter frame to wrap up the text
         CreateLetterFrame(aBlockFrame, aBlockContinuation, textContent,

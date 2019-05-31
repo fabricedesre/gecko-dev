@@ -7718,69 +7718,6 @@ if (IsCSSPropertyPrefEnabled("layout.css.overscroll-behavior.enabled")) {
   };
 }
 
-if (IsCSSPropertyPrefEnabled("layout.css.scroll-snap.enabled") &&
-    !IsCSSPropertyPrefEnabled("layout.css.scroll-snap-v1.enabled")) {
-  gCSSProperties["scroll-snap-coordinate"] = {
-    domProp: "scrollSnapCoordinate",
-    inherited: false,
-    type: CSS_TYPE_LONGHAND,
-    initial_values: [ "none" ],
-    other_values: [ "25% 25%", "top", "0px 100px, 10em 50%",
-                    "top left, top right, bottom left, bottom right, center",
-                    "calc(2px)",
-                    "calc(50%)",
-                    "calc(3*25px)",
-                    "calc(3*25px) 5px",
-                    "5px calc(3*25px)",
-                    "calc(20%) calc(3*25px)",
-                    "calc(25px*3)",
-                    "calc(3*25px + 50%)",
-                    "calc(20%) calc(3*25px), center"],
-    invalid_values: [ "auto", "default" ]
-  }
-  gCSSProperties["scroll-snap-destination"] = {
-    domProp: "scrollSnapDestination",
-    inherited: false,
-    type: CSS_TYPE_LONGHAND,
-    initial_values: [ "0px 0px" ],
-    other_values: [ "25% 25%", "6px 5px", "20% 3em", "0in 1in",
-                    "top", "right", "top left", "top right", "center",
-                    "calc(2px)",
-                    "calc(50%)",
-                    "calc(3*25px)",
-                    "calc(3*25px) 5px",
-                    "5px calc(3*25px)",
-                    "calc(20%) calc(3*25px)",
-                    "calc(25px*3)",
-                    "calc(3*25px + 50%)"],
-    invalid_values: [ "auto", "none", "default" ]
-  }
-  gCSSProperties["scroll-snap-points-x"] = {
-    domProp: "scrollSnapPointsX",
-    inherited: false,
-    type: CSS_TYPE_LONGHAND,
-    initial_values: [ "none" ],
-    other_values: [ "repeat(100%)", "repeat(120px)", "repeat(calc(3*25px))" ],
-    invalid_values: [ "auto", "1px", "left", "rgb(1,2,3)" ]
-  }
-  gCSSProperties["scroll-snap-points-y"] = {
-    domProp: "scrollSnapPointsY",
-    inherited: false,
-    type: CSS_TYPE_LONGHAND,
-    initial_values: [ "none" ],
-    other_values: [ "repeat(100%)", "repeat(120px)", "repeat(calc(3*25px))" ],
-    invalid_values: [ "auto", "1px", "top", "rgb(1,2,3)" ]
-  }
-  gCSSProperties["scroll-snap-type"] = {
-    domProp: "scrollSnapType",
-    inherited: false,
-    type: CSS_TYPE_LONGHAND,
-    initial_values: [ "none" ],
-    other_values: [ "both mandatory", "both" ],
-    invalid_values: [ "auto",  "1px" ]
-  };
-}
-
 if (IsCSSPropertyPrefEnabled("layout.css.scroll-snap-v1.enabled")) {
   gCSSProperties["scroll-snap-type"] = {
     domProp: "scrollSnapType",
@@ -8809,6 +8746,15 @@ if (IsCSSPropertyPrefEnabled("layout.css.motion-path.enabled")) {
     initial_values: [ "0" ],
     other_values: [ "10px", "10%", "190%", "-280%", "calc(30px + 40%)" ],
     invalid_values: [ "none", "45deg" ]
+  };
+
+  gCSSProperties["offset-rotate"] = {
+    domProp: "offsetRotate",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "auto" ],
+    other_values: [ "reverse", "0deg", "0rad reverse", "-45deg", "5turn auto" ],
+    invalid_values: [ "none", "10px", "reverse 0deg reverse", "reverse auto" ]
   };
 }
 

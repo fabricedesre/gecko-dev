@@ -132,6 +132,23 @@ class InactivePropertyHelper {
         msgId: "inactive-css-not-grid-or-flex-container",
         numFixProps: 2,
       },
+      // Inline properties used on non-inline-level elements.
+      {
+        invalidProperties: [
+          "vertical-align",
+        ],
+        when: () => {
+          const { selectorText } = this.cssRule;
+
+          const isFirstLetter = selectorText && selectorText.includes("::first-letter");
+          const isFirstLine = selectorText && selectorText.includes("::first-line");
+
+          return !this.isInlineLevel() && !isFirstLetter && !isFirstLine;
+        },
+        fixId: "inactive-css-not-inline-or-tablecell-fix",
+        msgId: "inactive-css-not-inline-or-tablecell",
+        numFixProps: 2,
+      },
     ];
   }
 
@@ -246,6 +263,13 @@ class InactivePropertyHelper {
   }
 
   /**
+   *  Provide a public reference to the css rule.
+   */
+  get cssRule() {
+    return this._cssRule;
+  }
+
+  /**
    * Check if the current node's propName is set to one of the values passed in
    * the values array.
    *
@@ -271,6 +295,24 @@ class InactivePropertyHelper {
    */
   checkStyleForNode(node, propName, values) {
     return values.some(value => this.style[propName] === value);
+  }
+
+  /**
+   *  Check if the current node is an inline-level box.
+   */
+  isInlineLevel() {
+    return this.checkStyle("display", [
+      "inline",
+      "inline-block",
+      "inline-table",
+      "inline-flex",
+      "inline-grid",
+      "table-cell",
+      "table-row",
+      "table-row-group",
+      "table-header-group",
+      "table-footer-group",
+    ]);
   }
 
   /**
