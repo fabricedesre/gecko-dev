@@ -99,7 +99,9 @@
 #include "nsSocketTransportService2.h"
 #include "nsViewSourceHandler.h"
 #include "nsJARURI.h"
+#if !defined MOZ_WIDGET_GONK
 #include "nsIconURI.h"
+#endif
 #include "nsAboutProtocolHandler.h"
 #include "nsResProtocolHandler.h"
 #include "mozilla/net/ExtensionProtocolHandler.h"
@@ -1840,11 +1842,13 @@ nsresult NS_NewURI(nsIURI** aURI, const nsACString& aSpec,
         .Finalize(aURI);
   }
 
+#if !defined(MOZ_WIDGET_GONK)
   if (scheme.EqualsLiteral("moz-icon")) {
     return NS_MutateURI(new nsMozIconURI::Mutator())
         .SetSpec(aSpec)
         .Finalize(aURI);
   }
+#endif
 
 #ifdef MOZ_WIDGET_GTK
   if (scheme.EqualsLiteral("smb") || scheme.EqualsLiteral("sftp")) {

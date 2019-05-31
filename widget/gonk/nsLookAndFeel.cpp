@@ -59,243 +59,243 @@ nsLookAndFeel::NativeGetColor(ColorID aID, nscolor &aColor)
         // These colors don't seem to be used for anything anymore in Mozilla
         // (except here at least TextSelectBackground and TextSelectForeground)
         // The CSS2 colors below are used.
-    case eColorID_WindowBackground:
+    case ColorID::WindowBackground:
         aColor = BASE_NORMAL_COLOR;
         break;
-    case eColorID_WindowForeground:
+    case ColorID::WindowForeground:
         aColor = TEXT_NORMAL_COLOR;
         break;
-    case eColorID_WidgetBackground:
+    case ColorID::WidgetBackground:
         aColor = BG_NORMAL_COLOR;
         break;
-    case eColorID_WidgetForeground:
+    case ColorID::WidgetForeground:
         aColor = FG_NORMAL_COLOR;
         break;
-    case eColorID_WidgetSelectBackground:
+    case ColorID::WidgetSelectBackground:
         aColor = BG_SELECTED_COLOR;
         break;
-    case eColorID_WidgetSelectForeground:
+    case ColorID::WidgetSelectForeground:
         aColor = FG_SELECTED_COLOR;
         break;
-    case eColorID_Widget3DHighlight:
+    case ColorID::Widget3DHighlight:
         aColor = NS_RGB(0xa0,0xa0,0xa0);
         break;
-    case eColorID_Widget3DShadow:
+    case ColorID::Widget3DShadow:
         aColor = NS_RGB(0x40,0x40,0x40);
         break;
-    case eColorID_TextBackground:
+    case ColorID::TextBackground:
         // not used?
         aColor = BASE_NORMAL_COLOR;
         break;
-    case eColorID_TextForeground:
+    case ColorID::TextForeground:
         // not used?
         aColor = TEXT_NORMAL_COLOR;
         break;
-    case eColorID_TextSelectBackground:
+    case ColorID::TextSelectBackground:
         aColor = NS_RGBA(0x33,0xb5,0xe5,0x66);
         break;
-    case eColorID_IMESelectedRawTextBackground:
-    case eColorID_IMESelectedConvertedTextBackground:
+    case ColorID::IMESelectedRawTextBackground:
+    case ColorID::IMESelectedConvertedTextBackground:
         // still used
         aColor = BASE_SELECTED_COLOR;
         break;
-    case eColorID_TextSelectForegroundCustom:
+    case ColorID::TextSelectForegroundCustom:
         aColor = NS_RGB(0x4d,0x4d,0x4d);
         break;
-    case eColorID_TextSelectForeground:
+    case ColorID::TextSelectForeground:
         aColor = NS_CHANGE_COLOR_IF_SAME_AS_BG;
         break;
-    case eColorID_IMESelectedRawTextForeground:
-    case eColorID_IMESelectedConvertedTextForeground:
+    case ColorID::IMESelectedRawTextForeground:
+    case ColorID::IMESelectedConvertedTextForeground:
         // still used
         aColor = TEXT_SELECTED_COLOR;
         break;
-    case eColorID_IMERawInputBackground:
-    case eColorID_IMEConvertedTextBackground:
+    case ColorID::IMERawInputBackground:
+    case ColorID::IMEConvertedTextBackground:
         aColor = NS_TRANSPARENT;
         break;
-    case eColorID_IMERawInputForeground:
-    case eColorID_IMEConvertedTextForeground:
+    case ColorID::IMERawInputForeground:
+    case ColorID::IMEConvertedTextForeground:
         aColor = NS_SAME_AS_FOREGROUND_COLOR;
         break;
-    case eColorID_IMERawInputUnderline:
-    case eColorID_IMEConvertedTextUnderline:
+    case ColorID::IMERawInputUnderline:
+    case ColorID::IMEConvertedTextUnderline:
         aColor = NS_SAME_AS_FOREGROUND_COLOR;
         break;
-    case eColorID_IMESelectedRawTextUnderline:
-    case eColorID_IMESelectedConvertedTextUnderline:
+    case ColorID::IMESelectedRawTextUnderline:
+    case ColorID::IMESelectedConvertedTextUnderline:
         aColor = NS_TRANSPARENT;
         break;
-    case eColorID_SpellCheckerUnderline:
+    case ColorID::SpellCheckerUnderline:
       aColor = NS_RGB(0xff, 0, 0);
       break;
 
         // css2  http://www.w3.org/TR/REC-CSS2/ui.html#system-colors
-    case eColorID_activeborder:
+    case ColorID::Activeborder:
         // active window border
         aColor = BG_NORMAL_COLOR;
         break;
-    case eColorID_activecaption:
+    case ColorID::Activecaption:
         // active window caption background
         aColor = BG_NORMAL_COLOR;
         break;
-    case eColorID_appworkspace:
+    case ColorID::Appworkspace:
         // MDI background color
         aColor = BG_NORMAL_COLOR;
         break;
-    case eColorID_background:
+    case ColorID::Background:
         // desktop background
         aColor = BG_NORMAL_COLOR;
         break;
-    case eColorID_captiontext:
+    case ColorID::Captiontext:
         // text in active window caption, size box, and scrollbar arrow box (!)
         aColor = FG_NORMAL_COLOR;
         break;
-    case eColorID_graytext:
+    case ColorID::Graytext:
         // disabled text in windows, menus, etc.
         aColor = FG_INSENSITIVE_COLOR;
         break;
-    case eColorID_highlight:
+    case ColorID::Highlight:
         // background of selected item
         aColor = BASE_SELECTED_COLOR;
         break;
-    case eColorID_highlighttext:
+    case ColorID::Highlighttext:
         // text of selected item
         aColor = TEXT_SELECTED_COLOR;
         break;
-    case eColorID_inactiveborder:
+    case ColorID::Inactiveborder:
         // inactive window border
         aColor = BG_NORMAL_COLOR;
         break;
-    case eColorID_inactivecaption:
+    case ColorID::Inactivecaption:
         // inactive window caption
         aColor = BG_INSENSITIVE_COLOR;
         break;
-    case eColorID_inactivecaptiontext:
+    case ColorID::Inactivecaptiontext:
         // text in inactive window caption
         aColor = FG_INSENSITIVE_COLOR;
         break;
-    case eColorID_infobackground:
+    case ColorID::Infobackground:
         // tooltip background color
         aColor = BG_NORMAL_COLOR;
         break;
-    case eColorID_infotext:
+    case ColorID::Infotext:
         // tooltip text color
         aColor = TEXT_NORMAL_COLOR;
         break;
-    case eColorID_menu:
+    case ColorID::Menu:
         // menu background
         aColor = BG_NORMAL_COLOR;
         break;
-    case eColorID_menutext:
+    case ColorID::Menutext:
         // menu text
         aColor = TEXT_NORMAL_COLOR;
         break;
-    case eColorID_scrollbar:
+    case ColorID::Scrollbar:
         // scrollbar gray area
         aColor = BG_ACTIVE_COLOR;
         break;
 
-    case eColorID_threedface:
-    case eColorID_buttonface:
+    case ColorID::Threedface:
+    case ColorID::Buttonface:
         // 3-D face color
         aColor = BG_NORMAL_COLOR;
         break;
 
-    case eColorID_buttontext:
+    case ColorID::Buttontext:
         // text on push buttons
         aColor = TEXT_NORMAL_COLOR;
         break;
 
-    case eColorID_buttonhighlight:
+    case ColorID::Buttonhighlight:
         // 3-D highlighted edge color
-    case eColorID_threedhighlight:
+    case ColorID::Threedhighlight:
         // 3-D highlighted outer edge color
         aColor = LIGHT_NORMAL_COLOR;
         break;
 
-    case eColorID_threedlightshadow:
+    case ColorID::Threedlightshadow:
         // 3-D highlighted inner edge color
         aColor = BG_NORMAL_COLOR;
         break;
 
-    case eColorID_buttonshadow:
+    case ColorID::Buttonshadow:
         // 3-D shadow edge color
-    case eColorID_threedshadow:
+    case ColorID::Threedshadow:
         // 3-D shadow inner edge color
         aColor = DARK_NORMAL_COLOR;
         break;
 
-    case eColorID_threeddarkshadow:
+    case ColorID::Threeddarkshadow:
         // 3-D shadow outer edge color
         aColor = NS_RGB(0,0,0);
         break;
 
-    case eColorID_window:
-    case eColorID_windowframe:
+    case ColorID::Window:
+    case ColorID::Windowframe:
         aColor = BG_NORMAL_COLOR;
         break;
 
-    case eColorID_windowtext:
+    case ColorID::Windowtext:
         aColor = FG_NORMAL_COLOR;
         break;
 
-    case eColorID__moz_eventreerow:
-    case eColorID__moz_field:
+    case ColorID::MozEventreerow:
+    case ColorID::MozField:
         aColor = BASE_NORMAL_COLOR;
         break;
-    case eColorID__moz_fieldtext:
+    case ColorID::MozFieldtext:
         aColor = TEXT_NORMAL_COLOR;
         break;
-    case eColorID__moz_dialog:
+    case ColorID::MozDialog:
         aColor = BG_NORMAL_COLOR;
         break;
-    case eColorID__moz_dialogtext:
+    case ColorID::MozDialogtext:
         aColor = FG_NORMAL_COLOR;
         break;
-    case eColorID__moz_dragtargetzone:
+    case ColorID::MozDragtargetzone:
         aColor = BG_SELECTED_COLOR;
         break;
-    case eColorID__moz_buttondefault:
+    case ColorID::MozButtondefault:
         // default button border color
         aColor = NS_RGB(0,0,0);
         break;
-    case eColorID__moz_buttonhoverface:
+    case ColorID::MozButtonhoverface:
         aColor = BG_PRELIGHT_COLOR;
         break;
-    case eColorID__moz_buttonhovertext:
+    case ColorID::MozButtonhovertext:
         aColor = FG_PRELIGHT_COLOR;
         break;
-    case eColorID__moz_cellhighlight:
-    case eColorID__moz_html_cellhighlight:
+    case ColorID::MozCellhighlight:
+    case ColorID::MozHtmlCellhighlight:
         aColor = BASE_ACTIVE_COLOR;
         break;
-    case eColorID__moz_cellhighlighttext:
-    case eColorID__moz_html_cellhighlighttext:
+    case ColorID::MozCellhighlighttext:
+    case ColorID::MozHtmlCellhighlighttext:
         aColor = TEXT_ACTIVE_COLOR;
         break;
-    case eColorID__moz_menuhover:
+    case ColorID::MozMenuhover:
         aColor = BG_PRELIGHT_COLOR;
         break;
-    case eColorID__moz_menuhovertext:
+    case ColorID::MozMenuhovertext:
         aColor = FG_PRELIGHT_COLOR;
         break;
-    case eColorID__moz_oddtreerow:
+    case ColorID::MozOddtreerow:
         aColor = NS_TRANSPARENT;
         break;
-    case eColorID__moz_nativehyperlinktext:
+    case ColorID::MozNativehyperlinktext:
         aColor = NS_SAME_AS_FOREGROUND_COLOR;
         break;
-    case eColorID__moz_comboboxtext:
+    case ColorID::MozComboboxtext:
         aColor = TEXT_NORMAL_COLOR;
         break;
-    case eColorID__moz_combobox:
+    case ColorID::MozCombobox:
         aColor = BG_NORMAL_COLOR;
         break;
-    case eColorID__moz_menubartext:
+    case ColorID::MozMenubartext:
         aColor = TEXT_NORMAL_COLOR;
         break;
-    case eColorID__moz_menubarhovertext:
+    case ColorID::MozMenubarhovertext:
         aColor = FG_PRELIGHT_COLOR;
         break;
     default:

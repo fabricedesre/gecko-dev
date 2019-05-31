@@ -99,7 +99,7 @@ UniquePtr<SurfaceFactory> GLScreenBuffer::CreateFactory(
           SurfaceFactory_SurfaceTexture::Create(gl, caps, ipcChannel, flags);
     }
 #elif defined(MOZ_WIDGET_GONK)
-    if (!gfxPrefs::DisableGralloc()) {
+    if (!gfx::gfxVars::DisableGralloc()) {
         factory = MakeUnique<SurfaceFactory_Gralloc>(gl, caps, ipcChannel, flags);
     }
 #else

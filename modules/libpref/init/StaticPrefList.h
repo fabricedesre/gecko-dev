@@ -2216,6 +2216,21 @@ VARCACHE_PREF(
   RelaxedAtomicBool, true
 )
 
+// B2G specific preferences.
+// InputMethod API
+#if defined(MOZ_WIDGET_GONK)
+# define PREF_VALUE true
+#else
+# define PREF_VALUE false
+#endif
+VARCACHE_PREF(
+  Live,
+  "dom.mozInputMethod.enabled",
+  dom_mozInputMethod_enabled,
+  RelaxedAtomicBool, PREF_VALUE
+)
+#undef PREF_VALUE
+
 //---------------------------------------------------------------------------
 // Prefs starting with "extensions."
 //---------------------------------------------------------------------------

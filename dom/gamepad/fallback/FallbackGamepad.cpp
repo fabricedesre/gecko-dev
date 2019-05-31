@@ -11,5 +11,9 @@ void StartGamepadMonitoring() {}
 
 void StopGamepadMonitoring() {}
 
+void SetGamepadLightIndicatorColor(uint32_t aControllerIdx, uint32_t aLightColorIndex,
+    uint8_t aRed, uint8_t aGreen, uint8_t aBlue) {
+}
+
 }  // namespace dom
 }  // namespace mozilla

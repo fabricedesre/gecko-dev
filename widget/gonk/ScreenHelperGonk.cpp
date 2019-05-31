@@ -15,7 +15,6 @@
 
 #include "android/log.h"
 #include "GLContext.h"
-#include "gfxPrefs.h"
 #include "gfxUtils.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/TouchEvents.h"
@@ -149,7 +148,6 @@ nsScreenGonk::nsScreenGonk(uint32_t aId,
         NS_WARNING("aNativeData.mXdpi should not be 0!! Defaulting to 96.0");
         mDpi = 96.0;
     }
-    mDpi = 210;
 
     if (mNativeWindow->query(mNativeWindow.get(), NATIVE_WINDOW_WIDTH, &mVirtualBounds.width) ||
         mNativeWindow->query(mNativeWindow.get(), NATIVE_WINDOW_HEIGHT, &mVirtualBounds.height) ||

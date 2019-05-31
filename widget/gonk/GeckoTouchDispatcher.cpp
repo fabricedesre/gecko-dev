@@ -21,10 +21,10 @@
 #include "InputData.h"
 // #include "ProfilerMarkers.h"
 #include "base/basictypes.h"
-#include "gfxPrefs.h"
 #include "libui/Input.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Mutex.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/TouchEvents.h"
 #include "mozilla/dom/Touch.h"
@@ -76,9 +76,8 @@ GeckoTouchDispatcher::GeckoTouchDispatcher()
   // the singleton
   MOZ_ASSERT(sTouchDispatcher == nullptr);
   MOZ_ASSERT(NS_IsMainThread());
-  gfxPrefs::GetSingleton();
 
-  mEnabledUniformityInfo = gfxPrefs::UniformityInfo();
+  mEnabledUniformityInfo = StaticPrefs::UniformityInfo();
   mVsyncAdjust = TimeDuration::FromMilliseconds(0/*gfxPrefs::TouchVsyncSampleAdjust()*/);
   mMaxPredict = TimeDuration::FromMilliseconds(0/*gfxPrefs::TouchResampleMaxPredict()*/);
   mMinDelta = TimeDuration::FromMilliseconds(0/*gfxPrefs::TouchResampleMinDelta()*/);

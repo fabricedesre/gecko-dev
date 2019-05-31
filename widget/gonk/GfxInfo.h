@@ -44,6 +44,7 @@ public:
   NS_IMETHOD GetAdapterDriverVersion2(nsAString & aAdapterDriverVersion) override;
   NS_IMETHOD GetAdapterDriverDate2(nsAString & aAdapterDriverDate) override;
   NS_IMETHOD GetIsGPU2Active(bool *aIsGPU2Active) override;
+  NS_IMETHOD GetWindowProtocol(nsAString& aWindowProtocol) override;
   using GfxInfoBase::GetFeatureStatus;
   using GfxInfoBase::GetFeatureSuggestedDriverVersion;
   // using GfxInfoBase::GetWebGLParameter;

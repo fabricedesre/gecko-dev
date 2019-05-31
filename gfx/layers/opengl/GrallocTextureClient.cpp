@@ -7,6 +7,7 @@
 
 #include "libyuv.h"
 #include "mozilla/gfx/2D.h"
+#include "mozilla/gfx/gfxVars.h"
 //#include "mozilla/layers/AsyncTransactionTracker.h" // for AsyncTransactionTracker
 #include "mozilla/layers/GrallocTextureClient.h"
 #include "mozilla/layers/CompositableForwarder.h"
@@ -14,7 +15,6 @@
 #include "mozilla/layers/ShadowLayerUtilsGralloc.h"
 #include "mozilla/layers/SharedBufferManagerChild.h"
 #include "gfx2DGlue.h"
-#include "gfxPrefs.h" // for gfxPrefs
 #include "SharedSurfaceGralloc.h"
 
 #if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 17
@@ -30,7 +30,7 @@ using namespace android;
 static bool
 DisableGralloc(SurfaceFormat aFormat, const gfx::IntSize& aSizeHint)
 {
-  if (gfxPrefs::DisableGralloc()) {
+  if (gfx::gfxVars::DisableGralloc()) {
     return true;
   }
   if (aFormat == gfx::SurfaceFormat::A8) {

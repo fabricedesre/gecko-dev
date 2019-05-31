@@ -11,6 +11,7 @@
 #include "GLContext.h"
 #include "SharedSurface.h"
 #include "GLLibraryEGL.h"
+#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/layers/GrallocTextureClient.h"
 #include "mozilla/layers/ShadowLayers.h"
 
@@ -19,7 +20,6 @@
 #include "ScopedGLHelpers.h"
 
 #include "gfxPlatform.h"
-#include "gfxPrefs.h"
 
 #define DEBUG_GRALLOC
 #ifdef DEBUG_GRALLOC
@@ -214,7 +214,7 @@ SharedSurface_Gralloc::ProducerReleaseImpl()
     // We should be able to rely on genlock write locks/read locks.
     // But they're broken on some configs, and even a glFinish doesn't
     // work.  glReadPixels seems to, though.
-    if (gfxPrefs::GrallocFenceWithReadPixels()) {
+    if (gfx::gfxVars::GrallocFenceWithReadPixels()) {
         mGL->MakeCurrent();
         UniquePtr<char[]> buf = MakeUnique<char[]>(4);
         mGL->fReadPixels(0, 0, 1, 1, LOCAL_GL_RGBA, LOCAL_GL_UNSIGNED_BYTE, buf.get());

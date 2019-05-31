@@ -166,6 +166,11 @@ uint32_t GfxInfo::OperatingSystemVersion()
   return 0;
 }
 
+NS_IMETHODIMP
+GfxInfo::GetWindowProtocol(nsAString& aWindowProtocol) {
+  return NS_ERROR_FAILURE;
+}
+
 nsresult
 GfxInfo::GetFeatureStatusImpl(int32_t /*aFeature*/,
                               int32_t *aStatus,
