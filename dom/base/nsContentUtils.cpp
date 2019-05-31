@@ -6159,17 +6159,18 @@ bool nsContentUtils::IsSubDocumentTabbable(nsIContent* aContent) {
 }
 
 bool nsContentUtils::IsUserFocusIgnored(nsINode* aNode) {
-  if (!nsGenericHTMLFrameElement::BrowserFramesEnabled()) {
-    return false;
-  }
+  // if (!nsGenericHTMLFrameElement::BrowserFramesEnabled()) {
+  //   return false;
+  // }
 
   // Check if our mozbrowser iframe ancestors has ignoreuserfocus attribute.
   while (aNode) {
-    nsCOMPtr<nsIMozBrowserFrame> browserFrame = do_QueryInterface(aNode);
-    if (browserFrame &&
+    // nsCOMPtr<nsIMozBrowserFrame> browserFrame = do_QueryInterface(aNode);
+    if (//browserFrame &&
+        aNode->IsElement() &&
         aNode->AsElement()->HasAttr(kNameSpaceID_None,
-                                    nsGkAtoms::ignoreuserfocus) &&
-        browserFrame->GetReallyIsBrowser()) {
+                                    nsGkAtoms::ignoreuserfocus)) { // &&
+        // browserFrame->GetReallyIsBrowser()) {
       return true;
     }
     nsPIDOMWindowOuter* win = aNode->OwnerDoc()->GetWindow();
