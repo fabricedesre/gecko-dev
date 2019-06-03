@@ -570,10 +570,10 @@ nsWindow::IsEnabled() const
   return true;
 }
 
-NS_IMETHODIMP
-nsWindow::SetFocus(bool aRaise)
+void
+nsWindow::SetFocus(Raise aRaise)
 {
-  if (aRaise) {
+  if (aRaise == Raise::Yes) {
     BringToTop();
   }
 
@@ -581,8 +581,6 @@ nsWindow::SetFocus(bool aRaise)
     // We should only set focused window on non-toplevel primary window.
     gFocusedWindow = this;
   }
-
-  return NS_OK;
 }
 
 NS_IMETHODIMP
