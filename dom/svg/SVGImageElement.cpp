@@ -203,13 +203,11 @@ void SVGImageElement::MaybeLoadSVGImage() {
   }
 }
 
-nsresult SVGImageElement::BindToTree(Document* aDocument, nsIContent* aParent,
-                                     nsIContent* aBindingParent) {
-  nsresult rv =
-      SVGImageElementBase::BindToTree(aDocument, aParent, aBindingParent);
+nsresult SVGImageElement::BindToTree(BindContext& aContext, nsINode& aParent) {
+  nsresult rv = SVGImageElementBase::BindToTree(aContext, aParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsImageLoadingContent::BindToTree(aDocument, aParent, aBindingParent);
+  nsImageLoadingContent::BindToTree(aContext, aParent);
 
   if (mStringAttributes[HREF].IsExplicitlySet() ||
       mStringAttributes[XLINK_HREF].IsExplicitlySet()) {
@@ -270,9 +268,9 @@ already_AddRefed<Path> SVGImageElement::BuildPath(PathBuilder* aBuilder) {
   // hit-testing against it. For that we just pretend to be a rectangle.
 
   float x, y, width, height;
-  MOZ_ASSERT(GetPrimaryFrame());
-  SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y, SVGT::Width, SVGT::Height>(
-      this, &x, &y, &width, &height);
+  SVGGeometryProperty::ResolveAllAllowFallback<SVGT::X, SVGT::Y, SVGT::Width,
+                                               SVGT::Height>(this, &x, &y,
+                                                             &width, &height);
 
   if (width <= 0 || height <= 0) {
     return nullptr;

@@ -34,7 +34,6 @@
 #  undef CurrentTime
 #endif
 
-
 // Define to output information on decoding and painting framerate
 /* #define DEBUG_FRAME_RATE 1 */
 
@@ -148,8 +147,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
                               nsIPrincipal* aMaybeScriptedPrincipal,
                               nsAttrValue& aResult) override;
 
-  virtual nsresult BindToTree(Document* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent) override;
+  virtual nsresult BindToTree(BindContext&, nsINode& aParent) override;
   virtual void UnbindFromTree(bool aNullParent = true) override;
   virtual void DoneCreatingElement() override;
 
@@ -280,6 +278,10 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   // contents of this element must have a principal that subsumes this
   // principal. Returns null if nothing is playing.
   already_AddRefed<nsIPrincipal> GetCurrentPrincipal();
+
+  // Return true if the loading of this resource required cross-origin
+  // redirects.
+  bool HadCrossOriginRedirects();
 
   // Principal of the currently playing video resource. Anything accessing the
   // image container of this element must have a principal that subsumes this

@@ -1276,7 +1276,6 @@ nsDocShell::GatherCharsetMenuTelemetry() {
     case kCharsetFromDocTypeDefault:
     case kCharsetFromCache:
     case kCharsetFromParentFrame:
-    case kCharsetFromHintPrevDoc:
       // Changing charset on an unlabeled doc.
       if (isFileURL) {
         Telemetry::AccumulateCategorical(
@@ -1889,6 +1888,26 @@ nsDocShell::GetMayEnableCharacterEncodingMenu(
   }
 
   *aMayEnableCharacterEncodingMenu = true;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDocShell::GetCharsetAutodetected(bool* aCharsetAutodetected) {
+  *aCharsetAutodetected = false;
+  if (!mContentViewer) {
+    return NS_OK;
+  }
+  Document* doc = mContentViewer->GetDocument();
+  if (!doc) {
+    return NS_OK;
+  }
+  int32_t source = doc->GetDocumentCharacterSetSource();
+
+  if (source == kCharsetFromAutoDetection ||
+      source == kCharsetFromUserForcedAutoDetection) {
+    *aCharsetAutodetected = true;
+  }
+
   return NS_OK;
 }
 
@@ -4104,7 +4123,8 @@ nsDocShell::DisplayLoadError(nsresult aError, nsIURI* aURI,
     formatStrCount = 1;
     errorDescriptionID = "dnsNotFound2";
     error = "dnsNotFound";
-  } else if (NS_ERROR_CONNECTION_REFUSED == aError) {
+  } else if (NS_ERROR_CONNECTION_REFUSED == aError ||
+             NS_ERROR_PROXY_BAD_GATEWAY == aError) {
     NS_ENSURE_ARG_POINTER(aURI);
     addHostPort = true;
     error = "connectionFailure";
@@ -4112,7 +4132,8 @@ nsDocShell::DisplayLoadError(nsresult aError, nsIURI* aURI,
     NS_ENSURE_ARG_POINTER(aURI);
     addHostPort = true;
     error = "netInterrupt";
-  } else if (NS_ERROR_NET_TIMEOUT == aError) {
+  } else if (NS_ERROR_NET_TIMEOUT == aError ||
+             NS_ERROR_PROXY_GATEWAY_TIMEOUT == aError) {
     NS_ENSURE_ARG_POINTER(aURI);
     // Get the host
     nsAutoCString host;
@@ -4341,6 +4362,7 @@ nsDocShell::DisplayLoadError(nsresult aError, nsIURI* aURI,
         error = "proxyResolveFailure";
         break;
       case NS_ERROR_PROXY_CONNECTION_REFUSED:
+      case NS_ERROR_PROXY_AUTHENTICATION_FAILED:
         // Proxy connection was refused.
         error = "proxyConnectFailure";
         break;
@@ -6935,15 +6957,18 @@ nsresult nsDocShell::EndPageLoad(nsIWebProgress* aProgress,
          aStatus == NS_ERROR_CONNECTION_REFUSED ||
          aStatus == NS_ERROR_UNKNOWN_PROXY_HOST ||
          aStatus == NS_ERROR_PROXY_CONNECTION_REFUSED ||
+         aStatus == NS_ERROR_PROXY_AUTHENTICATION_FAILED ||
          aStatus == NS_ERROR_BLOCKED_BY_POLICY) &&
         (isTopFrame || UseErrorPages())) {
       DisplayLoadError(aStatus, url, nullptr, aChannel);
     } else if (aStatus == NS_ERROR_NET_TIMEOUT ||
+               aStatus == NS_ERROR_PROXY_GATEWAY_TIMEOUT ||
                aStatus == NS_ERROR_REDIRECT_LOOP ||
                aStatus == NS_ERROR_UNKNOWN_SOCKET_TYPE ||
                aStatus == NS_ERROR_NET_INTERRUPT ||
-               aStatus == NS_ERROR_NET_RESET || aStatus == NS_ERROR_OFFLINE ||
-               aStatus == NS_ERROR_MALWARE_URI ||
+               aStatus == NS_ERROR_NET_RESET ||
+               aStatus == NS_ERROR_PROXY_BAD_GATEWAY ||
+               aStatus == NS_ERROR_OFFLINE || aStatus == NS_ERROR_MALWARE_URI ||
                aStatus == NS_ERROR_PHISHING_URI ||
                aStatus == NS_ERROR_UNWANTED_URI ||
                aStatus == NS_ERROR_HARMFUL_URI ||
@@ -8366,11 +8391,11 @@ nsresult nsDocShell::SetupNewViewer(nsIContentViewer* aNewViewer) {
 
   const Encoding* forceCharset = nullptr;
   const Encoding* hintCharset = nullptr;
-  int32_t hintCharsetSource;
-  float textZoom;
-  float pageZoom;
-  float overrideDPPX;
-  bool styleDisabled;
+  int32_t hintCharsetSource = kCharsetUninitialized;
+  float textZoom = 1.0;
+  float pageZoom = 1.0;
+  float overrideDPPX = 1.0;
+  bool styleDisabled = false;
   // |newMUDV| also serves as a flag to set the data from the above vars
   nsCOMPtr<nsIContentViewer> newCv;
 
@@ -10181,6 +10206,8 @@ nsresult nsDocShell::DoURILoad(nsDocShellLoadState* aLoadState,
         nsIHttpChannelInternal::REDIRECT_MODE_MANUAL);
     MOZ_ASSERT(NS_SUCCEEDED(rv));
   }
+
+  Unused << rv;  // Keep Coverity happy
 
   nsCOMPtr<nsIWritablePropertyBag2> props(do_QueryInterface(channel));
   if (props) {

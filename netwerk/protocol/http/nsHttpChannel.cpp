@@ -1954,16 +1954,18 @@ nsresult nsHttpChannel::ProcessFailedProxyConnect(uint32_t httpStatus) {
       rv = NS_ERROR_CONNECTION_REFUSED;
       break;
     case 403:  // HTTP/1.1: "Forbidden"
-    case 407:  // ProcessAuthentication() failed
     case 501:  // HTTP/1.1: "Not Implemented"
       // user sees boilerplate Mozilla "Proxy Refused Connection" page.
       rv = NS_ERROR_PROXY_CONNECTION_REFUSED;
       break;
-    // Squid sends 404 if DNS fails (regular 404 from target is tunneled)
+    case 407:  // ProcessAuthentication() failed (e.g. no header)
+      rv = NS_ERROR_PROXY_AUTHENTICATION_FAILED;
+      break;
+      // Squid sends 404 if DNS fails (regular 404 from target is tunneled)
     case 404:  // HTTP/1.1: "Not Found"
-    // RFC 2616: "some deployed proxies are known to return 400 or 500 when
-    // DNS lookups time out."  (Squid uses 500 if it runs out of sockets: so
-    // we have a conflict here).
+               // RFC 2616: "some deployed proxies are known to return 400 or
+               // 500 when DNS lookups time out."  (Squid uses 500 if it runs
+               // out of sockets: so we have a conflict here).
     case 400:  // HTTP/1.1 "Bad Request"
     case 500:  // HTTP/1.1: "Internal Server Error"
       /* User sees: "Address Not Found: Firefox can't find the server at
@@ -1972,8 +1974,10 @@ nsresult nsHttpChannel::ProcessFailedProxyConnect(uint32_t httpStatus) {
       rv = NS_ERROR_UNKNOWN_HOST;
       break;
     case 502:  // HTTP/1.1: "Bad Gateway" (invalid resp from target server)
-    // Squid returns 503 if target request fails for anything but DNS.
+      rv = NS_ERROR_PROXY_BAD_GATEWAY;
+      break;
     case 503:  // HTTP/1.1: "Service Unavailable"
+      // Squid returns 503 if target request fails for anything but DNS.
       /* User sees: "Failed to Connect:
        *  Firefox can't establish a connection to the server at
        *  www.foo.com.  Though the site seems valid, the browser
@@ -1986,7 +1990,7 @@ nsresult nsHttpChannel::ProcessFailedProxyConnect(uint32_t httpStatus) {
     case 504:  // HTTP/1.1: "Gateway Timeout"
       // user sees: "Network Timeout: The server at www.foo.com
       //              is taking too long to respond."
-      rv = NS_ERROR_NET_TIMEOUT;
+      rv = NS_ERROR_PROXY_GATEWAY_TIMEOUT;
       break;
     // Confused proxy server or malicious response
     default:
@@ -5239,44 +5243,6 @@ nsresult nsHttpChannel::ReadFromCache(bool alreadyMarkedValid) {
   }
 
   nsresult rv;
-
-  // notify "http-on-may-change-process" observers
-  gHttpHandler->OnMayChangeProcess(this);
-
-  if (mRedirectContentProcessIdPromise) {
-    PushRedirectAsyncFunc(&nsHttpChannel::ContinueReadFromCache);
-    rv = StartCrossProcessRedirect();
-    if (NS_SUCCEEDED(rv)) {
-      return NS_OK;
-    }
-    PopRedirectAsyncFunc(&nsHttpChannel::ContinueReadFromCache);
-  }
-
-  return ContinueReadFromCache(NS_OK);
-}
-
-nsresult nsHttpChannel::ContinueReadFromCache(nsresult rv) {
-  LOG(("nsHttpChannel::ContinueReadFromCache [this=%p] spec: %s\n", this,
-       mSpec.get()));
-
-  // The channel may have been cancelled in the meantime, either by the
-  // consumer or the channel classifier. In that case, we need to AsyncAbort
-  // to ensure OnStart/StopRequest are called.
-  // This should only be an error code if the cross-process redirect failed,
-  // and OnRedirectVerifyCallback was called with an error code.
-  if (NS_FAILED(rv)) {
-    // rv can only be an error code if this was a failed cross-process redirect
-    // It shouldn't have happened during a revalidation.
-    MOZ_ASSERT(!mDidReval, "Should not be a 304 response");
-    // Also, this should not be possible.
-    MOZ_ASSERT(!mCachedContentIsPartial, "Unexpected partially cached page?");
-
-    MOZ_ASSERT(!mCachePump);
-
-    CloseCacheEntry(false);
-    DoAsyncAbort(NS_FAILED(mStatus) ? mStatus : rv);
-    return rv;
-  }
 
   // Keep the conditions below in sync with the conditions in
   // StartBufferingCachedEntity.

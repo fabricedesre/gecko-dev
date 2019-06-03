@@ -797,8 +797,8 @@ void TextureClient::SetAddedToCompositableClient() {
   }
 }
 
-static void CancelTextureClientRecycle(uint64_t aTextureId,
-                                       LayersIPCChannel* aAllocator) {
+static void CancelTextureClientNotifyNotUsed(uint64_t aTextureId,
+                                             LayersIPCChannel* aAllocator) {
   if (!aAllocator) {
     return;
   }
@@ -808,17 +808,17 @@ static void CancelTextureClientRecycle(uint64_t aTextureId,
     return;
   }
   if (MessageLoop::current() == msgLoop) {
-    aAllocator->CancelWaitForRecycle(aTextureId);
+    aAllocator->CancelWaitForNotifyNotUsed(aTextureId);
   } else {
-    msgLoop->PostTask(NewRunnableFunction("CancelTextureClientRecycleRunnable",
-                                          CancelTextureClientRecycle,
-                                          aTextureId, aAllocator));
+    msgLoop->PostTask(NewRunnableFunction(
+        "CancelTextureClientNotifyNotUsedRunnable",
+        CancelTextureClientNotifyNotUsed, aTextureId, aAllocator));
   }
 }
 
-void TextureClient::CancelWaitForRecycle() {
+void TextureClient::CancelWaitForNotifyNotUsed() {
   if (GetFlags() & TextureFlags::RECYCLE) {
-    CancelTextureClientRecycle(mSerial, GetAllocator());
+    CancelTextureClientNotifyNotUsed(mSerial, GetAllocator());
     return;
   }
 }

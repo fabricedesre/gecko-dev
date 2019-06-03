@@ -2628,11 +2628,16 @@ bool nsFrameLoader::TryRemoteBrowserInternal() {
       bool equals;
       if (!((parentWebNav = do_GetInterface(parentDocShell)) &&
             NS_SUCCEEDED(
-                NS_NewURI(getter_AddRefs(aboutAddons), "about:addons")) &&
-            NS_SUCCEEDED(
                 parentWebNav->GetCurrentURI(getter_AddRefs(parentURI))) &&
-            NS_SUCCEEDED(parentURI->EqualsExceptRef(aboutAddons, &equals)) &&
-            equals)) {
+            ((NS_SUCCEEDED(
+                  NS_NewURI(getter_AddRefs(aboutAddons), "about:addons")) &&
+              NS_SUCCEEDED(parentURI->EqualsExceptRef(aboutAddons, &equals)) &&
+              equals) ||
+             (NS_SUCCEEDED(NS_NewURI(
+                  getter_AddRefs(aboutAddons),
+                  "chrome://mozapps/content/extensions/aboutaddons.html")) &&
+              NS_SUCCEEDED(parentURI->EqualsExceptRef(aboutAddons, &equals)) &&
+              equals)))) {
         return false;
       }
     }
@@ -2777,6 +2782,10 @@ bool nsFrameLoader::IsRemoteFrame() {
     return true;
   }
   return false;
+}
+
+RemoteBrowser* nsFrameLoader::GetRemoteBrowser() const {
+  return mRemoteBrowser;
 }
 
 BrowserParent* nsFrameLoader::GetBrowserParent() const {

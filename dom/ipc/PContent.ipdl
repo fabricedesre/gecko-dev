@@ -50,6 +50,7 @@ include protocol PSessionStorageObserver;
 include DOMTypes;
 include JavaScriptTypes;
 include IPCBlob;
+include IPCStream;
 include PTabContext;
 include URIParams;
 include PluginTypes;
@@ -393,7 +394,7 @@ child:
                            IPCTabContext context,
                            BrowsingContext browsingContext,
                            uint32_t chromeFlags, ContentParentId cpId,
-                           bool isForBrowser);
+                           bool isForBrowser, bool isTopLevel);
 
 both:
     async PFileDescriptorSet(FileDescriptor fd);
@@ -1374,6 +1375,8 @@ parent:
     async RecordChildEvents(ChildEventData[] events);
     async RecordDiscardedData(DiscardedData data);
     async RecordOrigin(uint32_t metricId, nsCString origin);
+
+    async ReportContentBlockingLog(Principal firstPartyPrincipal, IPCStream aJSONStream);
 
     sync GetA11yContentId() returns (uint32_t aContentId);
     async A11yHandlerControl(uint32_t aPid,

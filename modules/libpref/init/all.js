@@ -903,7 +903,6 @@ pref("gfx.compositor.glcontext.opaque", false);
 
 pref("gfx.webrender.highlight-painted-layers", false);
 pref("gfx.webrender.blob-images", true);
-pref("gfx.webrender.blob.invalidation", true);
 pref("gfx.webrender.blob.paint-flashing", false);
 
 // WebRender debugging utilities.
@@ -2639,7 +2638,7 @@ pref("security.dialog_enable_delay", 1000);
 pref("security.notification_enable_delay", 500);
 
 #if defined(DEBUG) && !defined(ANDROID)
-pref("csp.about_uris_without_csp", "blank,printpreview,srcdoc,about,addons,cache-entry,config,crashes,debugging,devtools,downloads,home,memory,networking,newtab,performance,plugins,policies,profiles,restartrequired,serviceworkers,sessionrestore,support,sync-log,telemetry,url-classifier,webrtc,welcomeback");
+pref("csp.about_uris_without_csp", "blank,printpreview,srcdoc,addons,cache-entry,config,crashes,debugging,devtools,downloads,home,memory,networking,newtab,performance,plugins,policies,profiles,restartrequired,serviceworkers,sessionrestore,support,sync-log,telemetry,url-classifier,webrtc,welcomeback");
 // the following prefs are for testing purposes only.
 pref("csp.overrule_about_uris_without_csp_whitelist", false);
 pref("csp.skip_about_page_has_csp_assert", false);
@@ -5096,7 +5095,11 @@ pref("gfx.direct3d11.break-on-error", false);
 
 // Prefer flipping between two buffers over copying from our back buffer
 // to the OS.
+#ifdef NIGHTLY_BUILD
 pref("gfx.direct3d11.use-double-buffering", true);
+#else
+pref("gfx.direct3d11.use-double-buffering", false);
+#endif
 
 pref("layers.prefer-opengl", false);
 #endif
@@ -5148,13 +5151,8 @@ pref("extensions.webextensions.protocol.remote", true);
 // Enable tab hiding API by default.
 pref("extensions.webextensions.tabhide.enabled", true);
 
-#ifdef NIGHTLY_BUILD
-// Enable userScripts API by default on Nightly.
+// Enable userScripts API by default.
 pref("extensions.webextensions.userScripts.enabled", true);
-#else
-// Disable userScripts API by default on all other channels.
-pref("extensions.webextensions.userScripts.enabled", false);
-#endif
 
 pref("extensions.webextensions.background-delayed-startup", false);
 
@@ -5172,7 +5170,7 @@ pref("extensions.webextensions.performanceCountersMaxAge", 5000);
 // The HTML about:addons page.
 pref("extensions.htmlaboutaddons.enabled", false);
 // Whether to allow the inline options browser in HTML about:addons page.
-pref("extensions.htmlaboutaddons.inline-options.enabled", false);
+pref("extensions.htmlaboutaddons.inline-options.enabled", true);
 
 // Report Site Issue button
 // Note that on enabling the button in other release channels, make sure to
@@ -5712,8 +5710,6 @@ pref("browser.search.update", true);
 pref("browser.search.update.log", false);
 pref("browser.search.update.interval", 21600);
 pref("browser.search.suggest.enabled", true);
-pref("browser.search.reset.enabled", false);
-pref("browser.search.reset.whitelist", "");
 pref("browser.search.geoSpecificDefaults", false);
 pref("browser.search.geoip.url", "https://location.services.mozilla.com/v1/country?key=%MOZILLA_API_KEY%");
 pref("browser.search.geoip.timeout", 3000);

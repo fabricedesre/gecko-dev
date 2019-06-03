@@ -3541,6 +3541,17 @@ void PrintHitTestInfoStats(nsDisplayList& aList) {
 }
 #endif
 
+// Apply a batch of effects updates generated during a paint to their
+// respective remote browsers.
+static void ApplyEffectsUpdates(
+    const nsDataHashtable<nsPtrHashKey<RemoteBrowser>, EffectsInfo>& aUpdates) {
+  for (auto iter = aUpdates.ConstIter(); !iter.Done(); iter.Next()) {
+    auto browser = iter.Key();
+    auto update = iter.Data();
+    browser->UpdateEffects(update);
+  }
+}
+
 nsresult nsLayoutUtils::PaintFrame(gfxContext* aRenderingContext,
                                    nsIFrame* aFrame,
                                    const nsRegion& aDirtyRegion,
@@ -4087,6 +4098,11 @@ nsresult nsLayoutUtils::PaintFrame(gfxContext* aRenderingContext,
     // Disable partial updates for the following paint as well, as we now have
     // a plugin-specific display list.
     builder.SetDisablePartialUpdates(true);
+  }
+
+  // Apply effects updates if we were actually painting
+  if (isForPainting) {
+    ApplyEffectsUpdates(builder.GetEffectUpdates());
   }
 
   builder.Check();
@@ -7498,10 +7514,14 @@ nsLayoutUtils::SurfaceFromElementResult nsLayoutUtils::SurfaceFromElement(
     result.mCORSUsed = (corsmode != imgIRequest::CORS_NONE);
   }
 
+  bool hadCrossOriginRedirects = true;
+  imgRequest->GetHadCrossOriginRedirects(&hadCrossOriginRedirects);
+
   result.mPrincipal = principal.forget();
+  result.mHadCrossOriginRedirects = hadCrossOriginRedirects;
   result.mImageRequest = imgRequest.forget();
-  result.mIsWriteOnly =
-      CanvasUtils::CheckWriteOnlySecurity(result.mCORSUsed, result.mPrincipal);
+  result.mIsWriteOnly = CanvasUtils::CheckWriteOnlySecurity(
+      result.mCORSUsed, result.mPrincipal, result.mHadCrossOriginRedirects);
 
   return result;
 }
@@ -7549,6 +7569,7 @@ nsLayoutUtils::SurfaceFromElementResult nsLayoutUtils::SurfaceFromElement(
   result.mHasSize = true;
   result.mSize = size;
   result.mPrincipal = aElement->NodePrincipal();
+  result.mHadCrossOriginRedirects = false;
   result.mIsWriteOnly = aElement->IsWriteOnly();
 
   return result;
@@ -7595,8 +7616,9 @@ nsLayoutUtils::SurfaceFromElementResult nsLayoutUtils::SurfaceFromElement(
   result.mHasSize = true;
   result.mSize = result.mLayersImage->GetSize();
   result.mPrincipal = principal.forget();
-  result.mIsWriteOnly =
-      CanvasUtils::CheckWriteOnlySecurity(result.mCORSUsed, result.mPrincipal);
+  result.mHadCrossOriginRedirects = aElement->HadCrossOriginRedirects();
+  result.mIsWriteOnly = CanvasUtils::CheckWriteOnlySecurity(
+      result.mCORSUsed, result.mPrincipal, result.mHadCrossOriginRedirects);
 
   return result;
 }
@@ -8610,7 +8632,8 @@ bool nsLayoutUtils::IsAPZTestLoggingEnabled() {
 
 nsLayoutUtils::SurfaceFromElementResult::SurfaceFromElementResult()
     // Use safe default values here
-    : mIsWriteOnly(true),
+    : mHadCrossOriginRedirects(false),
+      mIsWriteOnly(true),
       mIsStillLoading(false),
       mHasSize(false),
       mCORSUsed(false),
