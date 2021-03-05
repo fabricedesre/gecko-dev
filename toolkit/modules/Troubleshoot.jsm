@@ -427,7 +427,7 @@ var dataProviders = {
         return [
           gate.title,
           gate.preference,
-          Services.prefs.getBoolPref(gate.preference),
+          Services.prefs.getBoolPref(gate.preference, false),
         ];
       })
     );
