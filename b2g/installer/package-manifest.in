@@ -498,3 +498,4 @@ bin/libfreebl_32int64_3.so
 
 ; [Extensions]
 @RESPATH@/components/extensions-toolkit.manifest
+@RESPATH@/components/extensions-b2g.manifest
