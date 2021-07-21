@@ -28,3 +28,5 @@ ac_add_options --with-ccache=sccache
 ac_add_options --with-api-daemon-port=8081
 
 mk_add_options AUTOCLOBBER=1
+
+export MOZ_REQUIRE_SIGNING=

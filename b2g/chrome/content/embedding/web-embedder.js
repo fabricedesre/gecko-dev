@@ -15,6 +15,7 @@ const { XPCOMUtils } = ChromeUtils.import(
 XPCOMUtils.defineLazyModuleGetters(this, {
   ChromeNotifications: "resource://gre/modules/ChromeNotifications.jsm",
   SelectionActionParent: "resource://gre/actors/SelectionActionParent.jsm",
+  WebExtensionsEmbedding: "resource://gre/modules/WebExtensionsEmbedding.jsm",
 });
 
 XPCOMUtils.defineLazyGetter(this, "Screenshot", function() {
@@ -549,6 +550,10 @@ XPCOMUtils.defineLazyServiceGetter(
         _webembed_log(`receive b2g-sw-registration-done`);
         this.dispatchEvent(new CustomEvent("sw-registration-done"));
       }, "b2g-sw-registration-done");
+
+      if (delegates.webExtensions) {
+        WebExtensionsEmbedding.setDelegate(delegates.webExtensions);
+      }
     }
 
     isDaemonReady() {

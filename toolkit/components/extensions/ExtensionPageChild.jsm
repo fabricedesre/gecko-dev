@@ -9,6 +9,8 @@
 
 var EXPORTED_SYMBOLS = ["ExtensionPageChild"];
 
+console.log(`TTT ExtensionPageChild.jsm loaded`);
+
 /**
  * This file handles privileged extension page logic that runs in the
  * child process.
@@ -115,17 +117,20 @@ function getFrameData(global) {
 
 var apiManager = new (class extends SchemaAPIManager {
   constructor() {
+    console.log(`ext-ExtensionPageChild.jsm apiManager::constructor`);
     super("addon", Schemas);
     this.initialized = false;
   }
 
   lazyInit() {
+    console.log(`ext-ExtensionPageChild.jsm apiManager::lazyInit`);
     if (!this.initialized) {
       this.initialized = true;
       this.initGlobal();
       for (let { value } of Services.catMan.enumerateCategory(
         CATEGORY_EXTENSION_SCRIPTS_ADDON
       )) {
+        console.log(`ext-ExtensionPageChild.jsm about to loadScript ${value}`);
         this.loadScript(value);
       }
     }
@@ -165,6 +170,7 @@ class ExtensionBaseContextChild extends BaseContext {
    * @param {number} [params.tabId] This tab's ID, used if viewType is "tab".
    */
   constructor(extension, params) {
+    console.log(`ext-ExtensionPageChild ExtensionBaseContextChild::constructor`);
     if (!params.envType) {
       throw new Error("Missing envType");
     }
@@ -283,6 +289,7 @@ defineLazyGetter(
   ExtensionPageContextChild.prototype,
   "childManager",
   function() {
+    console.log(`ext-ExtensionPageChild ExtensionPageContextChild childManager prop`);
     this.extension.apiManager.lazyInit();
 
     let localApis = {};
@@ -386,6 +393,7 @@ ExtensionPageChild = {
       true,
       event => event.target.location != "about:blank"
     ).then(() => {
+      console.log(`ext-ExtensionPageChild DOMContentLoaded location=${global.content?.location}`);
       let windowId = getInnerWindowID(global.content);
       let context = this.extensionContexts.get(windowId);
 
@@ -403,6 +411,7 @@ ExtensionPageChild = {
    * @param {nsIDOMWindow} contentWindow The global of the page.
    */
   initExtensionContext(extension, contentWindow) {
+    console.log(`ext-ExtensionPageChild initExtensionContent 0`);
     this._init();
 
     if (!WebExtensionPolicy.isExtensionProcess) {
@@ -410,6 +419,8 @@ ExtensionPageChild = {
         "Cannot create an extension page context in current process"
       );
     }
+
+    console.log(`ext-ExtensionPageChild initExtensionContent 1`);
 
     let windowId = getInnerWindowID(contentWindow);
     let context = this.extensionContexts.get(windowId);
@@ -424,6 +435,8 @@ ExtensionPageChild = {
       );
     }
 
+    console.log(`ext-ExtensionPageChild initExtensionContent 2`);
+
     let mm = contentWindow.docShell.messageManager;
 
     let { viewType, tabId, devtoolsToolboxInfo } = getFrameData(mm) || {};
@@ -431,6 +444,7 @@ ExtensionPageChild = {
     let uri = contentWindow.document.documentURIObject;
 
     if (devtoolsToolboxInfo) {
+      console.log(`ext-ExtensionPageChild initExtensionContent 3`);
       context = new DevToolsContextChild(extension, {
         viewType,
         contentWindow,
@@ -439,6 +453,7 @@ ExtensionPageChild = {
         devtoolsToolboxInfo,
       });
     } else {
+      console.log(`ext-ExtensionPageChild initExtensionContent 4`);
       context = new ExtensionPageContextChild(extension, {
         viewType,
         contentWindow,

@@ -12,6 +12,8 @@
 
 var EXPORTED_SYMBOLS = ["ExtensionProcessScript", "ExtensionAPIRequestHandler"];
 
+console.log(`ext-ExtensionProcessScript.jsm loaded`);
+
 const { MessageChannel } = ChromeUtils.import(
   "resource://gre/modules/MessageChannel.jsm"
 );
